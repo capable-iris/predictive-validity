@@ -62,6 +62,12 @@ cohort AS (
     -- Exclude placebo / vehicle / device / procedure "programs" — these are not drug programs.
     AND NOT d.is_placebo
     AND (dbc.modality_subtype IS NULL OR dbc.modality_subtype != 'non_drug_program')
+    -- Exclude vaccines and mRNA drugs — our preclin.approval table is FDA CDER + CBER
+    -- but missing vaccine approvals (Comirnaty, Shingrix, Arexvy, RSVpreF, Ixchiq, etc.)
+    -- and mRNA approvals. Including them zeros the Vaccine + mRNA LOA rows artificially
+    -- and drags overall LOA down. Cleaner to exclude than to report false 0%.
+    AND (dbc.modality IS NULL OR dbc.modality NOT IN ('vaccine', 'mrna'))
+    AND (dbc.novelty_class IS NULL OR dbc.novelty_class != 'vaccine')
     AND (
       po.outcome_broad IN ('approved','efficacy_fail','safety_fail','commercial_fail',
                             'enrollment_fail','unclassified_termination','planned_termination')

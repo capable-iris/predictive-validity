@@ -2,18 +2,20 @@
 
 Replicates *Thomas et al. 2021, Clinical Development Success Rates and Contributing Factors 2011–2020* (BIO / QLS / Informa Pharma Intelligence) over our 2015–2025 cohort.
 
-## Overview: Ph1→Approval 7.0% (BIO 7.9%)
+**Vaccines and mRNA drugs excluded** — our `preclin.approval` table is FDA CDER + CBER but missing vaccine and mRNA approvals (Comirnaty, Shingrix, Arexvy, RSVpreF, Ixchiq, Ervebo, etc.). Including them zeros the Vaccine LOA row artificially and drags overall LOA down. Cohort: 42,984 Ph1+ programs after this filter.
+
+## Overview: Ph1→Approval 7.4% (BIO 7.9%)
 
 Headline replication numbers, side-by-side with BIO:
 
 | Metric | Us | BIO 2021 |
 |---|---|---|
-| **Overall Ph1→Approval (LOA)** | **7.0%** | **7.9%** |
-| Ph1 → Ph2 | 56.6% | 52.0% |
-| Ph2 → Ph3 | 51.2% | 28.9% |
-| Ph3 → Approval | 24.2% | ~52% (composed) |
+| **Overall Ph1→Approval (LOA)** | **7.4%** | **7.9%** |
+| Ph1 → Ph2 | 55.9% | 52.0% |
+| Ph2 → Ph3 | 51.0% | 28.9% |
+| Ph3 → Approval | 26.1% | ~52% (composed) |
 | Hematology LOA (top area) | 18.4% | 23.9% |
-| Oncology LOA | 6.5% | 5.3% |
+| Oncology LOA | 6.6% | 5.3% |
 | NME (small-molecule) LOA | 8.6% | 5.7% |
 | Biologic LOA | 26.5% | 9.1% |
 
@@ -50,10 +52,10 @@ Filters we apply (all novel to our pipeline; BIO already excludes these via Biom
 
 | Metric | Our data | BIO 2021 |
 |---|---|---|
-| Ph1 → Ph2 | 56.6% (n=45,124) | 52.0% (n=4,414) |
-| Ph2 → Ph3 | 51.2% (n=24,573) | 28.9% (n=4,933) |
-| Ph3 → Approval | 24.2% (n=11,709) | ~52% (composed) |
-| **Ph1 → Approval (LOA)** | **7.0%** | **7.9%** |
+| Ph1 → Ph2 | 55.9% (n=42,984) | 52.0% (n=4,414) |
+| Ph2 → Ph3 | 51.0% (n=23,062) | 28.9% (n=4,933) |
+| Ph3 → Approval | 26.1% (n=10,890) | ~52% (composed) |
+| **Ph1 → Approval (LOA)** | **7.4%** | **7.9%** |
 
 ### Figure 5a — LOA from Ph1 by therapeutic area (ranked by our LOA)
 
@@ -68,7 +70,7 @@ Filters we apply (all novel to our pipeline; BIO already excludes these via Biom
 | Gastroenterology | 8.8% | 820 | 8.3% | 186 |
 | Metabolic | 8.0% | 2,812 | 15.5% | 399 |
 | Cardiovascular | 7.6% | 1,366 | 4.8% | 651 |
-| Oncology | 6.5% | 15,283 | 5.3% | 4,179 |
+| Oncology | 6.6% | 15,062 | 5.3% | 4,179 |
 | Ophthalmology | 6.1% | 1,334 | 11.9% | 415 |
 | Respiratory | 5.8% | 1,613 | 7.5% | 501 |
 | Infectious disease | 5.3% | 5,352 | 13.2% | 1,170 |
@@ -81,8 +83,8 @@ Filters we apply (all novel to our pipeline; BIO already excludes these via Biom
 
 | Cohort | LOA | Ph1→2 | Ph2→3 | Ph3→Approval |
 |---|---|---|---|---|
-| Oncology (n=15,283) | 6.5% | 45.4% | 49.4% | 28.8% |
-| Non-oncology (n=29,841) | 7.4% | 62.4% | 51.8% | 23.0% |
+| Oncology (n=15,062) | 6.6% | 45.3% | 49.6% | 29.4% |
+| Non-oncology (n=27,938) | 8.0% | 61.7% | 51.5% | 25.1% |
 
 BIO: oncology 5.3% vs non-oncology 9.3%. Ordering matches (oncology lower). Numerical gap smaller than BIO's because our non-oncology cohort still has some heterogeneity BIO's doesn't.
 
@@ -102,11 +104,10 @@ BIO: oncology 5.3% vs non-oncology 9.3%. Ordering matches (oncology lower). Nume
 |---|---|---|---|
 | Biologic | 26.5% | 6,281 | 9.1% |
 | NME (small-molecule) | 8.6% | 20,864 | 5.7% |
-| Vaccine | 0.0% | 2,122 | 9.7% |
 | Non-NME | 0.0% | 7,329 | 13.3% |
 | Biosimilar | 0.0% | 162 | 32.2% |
 
-**Off-patent, Vaccine, Non-NME, Biosimilar all show 0% because our `preclin.approval` table (544 unique drugs, curated from FDA CDER + CBER 2015-2025) is enriched for novel NMEs and biologics. Biosimilar approvals, vaccine approvals (COVID and non-COVID), and label extensions of already-approved drugs are absent.** This is a data gap, not a real 0% approval rate. Fixing it requires ingesting FDA vaccine approvals (~50 rows) and biosimilar approvals (~50 rows) which is out of scope for this replication.
+**Off-patent, Non-NME, Biosimilar all show 0% because our `preclin.approval` table (544 unique drugs, curated from FDA CDER + CBER 2015-2025) is enriched for novel NMEs and biologics. Biosimilar approvals and label extensions of already-approved drugs are absent.** Data gap, not a real 0% rate. (Vaccine + mRNA excluded entirely from this cohort — see top-of-doc note.)
 
 ### Figure 10a — LOA by drug modality
 
@@ -121,8 +122,6 @@ BIO: oncology 5.3% vs non-oncology 9.3%. Ordering matches (oncology lower). Nume
 | Protein | 6.2% | 1,834 | 9.4% | — |
 | Small molecule | 5.8% | 29,286 | 7.5% | — |
 | Other | 0.8% | 4,622 | — | — |
-| Vaccine | 0.0% | 1,972 | 9.7% | 312 |
-| mRNA | 0.0% | 137 | — | — |
 
 Rank ordering matches BIO — biological complexity correlates with higher LOA. Our absolute numbers run higher for oligonucleotide / peptide / gene-therapy because the modern ASO/GLP-1/AAV wave is inside our 2015-2025 window but not BIO's 2011-2020.
 
@@ -141,7 +140,7 @@ python3 analyses/audit_data.py                  # full data audit → data_audit
 
 ## Known limitations
 
-- **`preclin.approval` scope**: 544 unique drugs from FDA CDER+CBER 2015-2025. Excludes vaccines (Comirnaty, Shingrix, Arexvy, RSVpreF, etc.), biosimilars (~100+ approved 2015-2025), and EMA-only approvals. This zeros out LOA for the Vaccine / Non-NME / Biosimilar subgroups.
+- **`preclin.approval` scope**: 544 unique drugs from FDA CDER+CBER 2015-2025. Excludes vaccines, mRNA drugs, biosimilars (~100+ approved 2015-2025), and EMA-only approvals. Vaccine + mRNA excluded from cohort entirely; biosimilar / Non-NME still show 0% because label extensions of already-approved drugs are absent from our approvals table.
 - **Cohort scope**: we include Ph3b/c label-extension trials, non-US-market programs, and Phase 2/3 combined designations that Biomedtracker filters out. Depresses Ph3→Approval (24% vs BIO ~52%).
 - **Program level**: drug × indication × **sponsor** vs BIO's drug × indication. Co-development shows as 2 programs for us, 1 for BIO.
 - **NDA→Approval separate rate**: BIO reports Ph3→NDA (57.8%) and NDA→Approval (90.6%). We don't track NDA filings — Ph3→Approval combined only.
