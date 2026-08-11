@@ -77,7 +77,10 @@ predictive-validity/
 ├── data/                CSV snapshots (approvals + leaderboard) + charts
 ├── db/                  Postgres schema + ingest + SCHEMA.md (evidence taxonomy)
 ├── benchmark/           Scoring framework — 5 scorer files + runner
-└── analyses/            Reproducible analysis scripts (ablation, time-machine, etc.)
+├── analyses/            Reproducible analysis scripts (ablation, time-machine, etc.)
+│   └── classifiers/     LLM classifiers that produce the JSONL inputs 02_ingest.py reads
+│                        (target-lit scorer, why-stopped classifier, silent-kill verify,
+│                         Nelson tier assignment) — see analyses/classifiers/README.md
 ```
 
 ## How to plug in your own model

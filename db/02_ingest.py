@@ -1081,6 +1081,16 @@ def ingest_evidence_scores(cur):
 # Step 8: Classifications (LLM outputs)
 # ============================================================
 
+def _read_cost(d):
+    """Canonical cost extractor. Prefers `_cost_usd`; falls back to legacy
+    field names produced by pre-2026-08 classifier runs."""
+    for k in ("_cost_usd", "_cost_share", "_cost"):
+        v = d.get(k)
+        if v is not None:
+            return v
+    return None
+
+
 def ingest_classifications(cur):
     def flush(rows, source_file, task, model):
         if not rows:
@@ -1123,7 +1133,7 @@ def ingest_classifications(cur):
                         continue
                     rows.append(("trial", nct, "why_stopped", d.get("cat", "unclear"),
                                  d.get("confidence"), None, None,
-                                 "claude-haiku", "v1", None, Json(d)))
+                                 "claude-haiku", "v1", _read_cost(d), Json(d)))
                 except Exception:
                     pass
         n = flush(rows, "why_stopped_haiku.jsonl", "why_stopped", "claude-haiku")
@@ -1142,7 +1152,7 @@ def ingest_classifications(cur):
                     rows.append(("trial", nct, "why_stopped", d.get("cat", "unclear"),
                                  d.get("confidence"), None, None,
                                  "claude-sonnet", "v1",
-                                 d.get("_cost_share"), Json(d)))
+                                 _read_cost(d), Json(d)))
                 except Exception:
                     pass
         n = flush(rows, "why_stopped_sonnet.jsonl", "why_stopped", "claude-sonnet")
@@ -1160,7 +1170,7 @@ def ingest_classifications(cur):
                         continue
                     rows.append(("drug", dk, "silent_kill_verify", d.get("cat", "unclear"),
                                  d.get("confidence"), d.get("evidence"), None,
-                                 "claude-sonnet", "v1", d.get("_cost"), Json(d)))
+                                 "claude-sonnet", "v1", _read_cost(d), Json(d)))
                 except Exception:
                     pass
         n = flush(rows, "silent_kill_verified.jsonl",
@@ -1181,7 +1191,7 @@ def ingest_classifications(cur):
                                  d.get("primary_target", "unknown"),
                                  d.get("confidence"),
                                  (d.get("brief_rationale") or "")[:500],
-                                 None, "claude-haiku", "v1", d.get("_cost"), Json(d)))
+                                 None, "claude-haiku", "v1", _read_cost(d), Json(d)))
                 except Exception:
                     pass
         n = flush(rows, "resolved_targets.jsonl",
@@ -1202,7 +1212,7 @@ def ingest_classifications(cur):
                                  d.get("verified_confidence"),
                                  (d.get("verified_rationale") or "")[:500],
                                  None, "claude-sonnet", "v1_verify",
-                                 d.get("_cost"), Json(d)))
+                                 _read_cost(d), Json(d)))
                 except Exception:
                     pass
         n = flush(rows, "verified_targets.jsonl",
