@@ -8,6 +8,7 @@ import sys
 import numpy as np
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from sklearn.model_selection import GroupKFold
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'benchmark'))
@@ -16,20 +17,31 @@ _runner = import_module("runner")
 _ml = import_module("scorers_ml")
 _robust = import_module("scorers_ml")
 _stack = import_module("scorers_ensemble")
-_ablate = import_module("ablation")
 
 DB_URL = os.environ["DATABASE_URL"]
+
+
+def group_cv_predict(model_ctor, X, y, groups, n_splits=5):
+    """OOF predictions with targets held out between train and test folds."""
+    splitter = GroupKFold(n_splits=n_splits)
+    oof = np.zeros(len(y), dtype=np.float64)
+    for train_idx, test_idx in splitter.split(X, y, groups=groups):
+        model = model_ctor()
+        model.fit(X[train_idx], y[train_idx])
+        oof[test_idx] = model.predict_proba(X[test_idx])[:, 1]
+    return oof
 
 
 def main():
     rows = _robust.load_strict()
     X = np.stack([_ml.row_to_feature_vector(r) for r in rows])
     y = np.array([1 if r["y_strict"] else 0 for r in rows], dtype=np.int64)
+    groups = np.array([r["target_id"] for r in rows], dtype=np.int64)
     X_log = _stack.log_transform_features(X, _ml.FEATURE_NAMES)
     print(f"Cohort: {len(rows)}, positive: {y.mean():.4f}")
 
     # Full model
-    oof_full = _robust.cv_predict_strict(_stack.make_logreg_l2, X_log, y, n_splits=5)
+    oof_full = group_cv_predict(_stack.make_logreg_l2, X_log, y, groups)
     auc_full = _runner.auc_roc(y.tolist(), oof_full.tolist())
     print(f"\nFull LogReg model AUC (strict): {auc_full:.3f}")
 
@@ -44,14 +56,14 @@ def main():
     for cat in categories:
         X_ab = X_log.copy()
         for i, name in enumerate(_ml.FEATURE_NAMES):
-            cat_check = _ablate.CATEGORY_MAP.get(name)
+            cat_check = _ml.FEATURE_CATEGORIES.get(name)
             if name.startswith("nelson_"):
                 cat_check = "A_genetics"
             elif name.startswith("ta_"):
                 cat_check = "context"
             if cat_check == cat:
                 X_ab[:, i] = np.nan
-        oof_ab = _robust.cv_predict_strict(_stack.make_logreg_l2, X_ab, y)
+        oof_ab = group_cv_predict(_stack.make_logreg_l2, X_ab, y, groups)
         auc_ab = _runner.auc_roc(y.tolist(), oof_ab.tolist())
         delta = auc_ab - auc_full
         print(f"{cat:<16} {auc_ab:.3f}   {delta:+.4f}")
@@ -65,10 +77,10 @@ def main():
                   (scoring_function, scoring_version, cohort_definition,
                    n_ti_pairs, n_approved, n_failed, auc_roc, notes)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (f"logreg_strict_ablate_no_{cat}", "v3_strict",
-                  "ti_phase2plus_strict", len(rows), int(y.sum()),
+            """, (f"logreg_strict_ablate_no_{cat}_v2_hpo", "v2_hpo",
+                  "ti_phase2plus_strict_holdout_target", len(rows), int(y.sum()),
                   int(len(y) - y.sum()), auc_ab,
-                  f"Ablate {cat}, strict outcome, LogReg. Full AUC={auc_full:.3f}, delta={delta:+.4f}"))
+                  f"Ablate {cat}, strict outcome, GroupKFold(target), corrected HPO. Full AUC={auc_full:.3f}, delta={delta:+.4f}"))
             conn.commit()
         conn.close()
 

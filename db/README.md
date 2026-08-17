@@ -29,6 +29,15 @@ psql "$DATABASE_URL" -f 09_time_cutoff_features.sql
 
 ~15 min end-to-end for a fresh ingest.
 
+## Existing database migrations
+
+Run migrations from the repository root. Fresh ingests already contain these
+changes in the numbered setup files.
+
+```bash
+.venv/bin/dotenv run -- sh -c 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f db/10_reclassify_hpo_evidence.sql'
+```
+
 ## Tables
 
 | Table | Rows | Purpose |

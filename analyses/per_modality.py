@@ -10,6 +10,7 @@ from collections import Counter
 import numpy as np
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from sklearn.model_selection import GroupKFold
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'benchmark'))
@@ -22,46 +23,44 @@ _stack = import_module("scorers_ensemble")
 DB_URL = os.environ["DATABASE_URL"]
 
 
-# Join in the primary drug's modality for each T-I pair (majority modality of programs)
-PER_MODALITY_SQL = """
-    WITH ti_modality AS (
-      SELECT dt.target_id, p.indication_id,
-        MODE() WITHIN GROUP (ORDER BY d.modality) AS primary_modality,
-        COUNT(*) AS n_progs
-      FROM preclin.program p
-      JOIN preclin.drug d ON d.drug_id = p.drug_id
-      JOIN preclin.v_drug_target dt ON dt.drug_id = p.drug_id AND dt.role='primary'
-      WHERE d.is_placebo IS NOT TRUE
-      GROUP BY dt.target_id, p.indication_id
-    )
-    SELECT s.target_id, s.indication_id,
-      s.strict_approved_this_ti AS y_strict,
-      s.first_trial_date, s.max_phase_reached,
-      s.n_programs, s.n_sponsors,
-      i.therapeutic_area,
-      tim.primary_modality,
-      tw.*,
-      (SELECT value_text FROM preclin.evidence_score
-        WHERE subject_type='target_indication' AND subject_id = s.target_id
-          AND subject_id2 = s.indication_id AND dimension = 'nelson_tier'
-        LIMIT 1) AS nelson_tier
-    FROM preclin.v_target_indication_strict_outcome s
-    JOIN public.targets t ON t.id = s.target_id
-    JOIN preclin.indication i ON i.indication_id = s.indication_id
-    JOIN preclin.v_target_evidence_wide tw ON tw.target_id = s.target_id
-    JOIN ti_modality tim ON tim.target_id = s.target_id AND tim.indication_id = s.indication_id
-    WHERE s.max_phase_reached >= 2
-      AND (t.pathogen_type IS NULL OR t.pathogen_type = '')
-      AND s.outcomes_broad_all NOT SIMILAR TO 'in_dev%%'
+def group_cv_predict(model_ctor, X, y, groups, n_splits=5):
+    """OOF predictions with each target confined to one fold."""
+    splitter = GroupKFold(n_splits=n_splits)
+    oof = np.zeros(len(y), dtype=np.float64)
+    for train_idx, test_idx in splitter.split(X, y, groups=groups):
+        model = model_ctor()
+        model.fit(X[train_idx], y[train_idx])
+        oof[test_idx] = model.predict_proba(X[test_idx])[:, 1]
+    return oof
+
+
+# Load modality separately from the evidence-wide cohort to avoid a
+# pathological PostgreSQL plan that recomputes the wide view during grouping.
+MODALITY_LOOKUP_SQL = """
+    SELECT dt.target_id, p.indication_id,
+      MODE() WITHIN GROUP (ORDER BY d.modality) AS primary_modality
+    FROM preclin.program p
+    JOIN preclin.drug d ON d.drug_id = p.drug_id
+    JOIN preclin.v_drug_target dt ON dt.drug_id = p.drug_id AND dt.role='primary'
+    WHERE d.is_placebo IS NOT TRUE
+    GROUP BY dt.target_id, p.indication_id
 """
 
 
 def main():
+    rows = [dict(r) for r in _robust.load_strict()]
     conn = psycopg2.connect(DB_URL)
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
-        cur.execute(PER_MODALITY_SQL)
-        rows = cur.fetchall()
+        cur.execute(MODALITY_LOOKUP_SQL)
+        modality_by_ti = {
+            (r["target_id"], r["indication_id"]): r["primary_modality"]
+            for r in cur.fetchall()
+        }
     conn.close()
+
+    rows = [r for r in rows if (r["target_id"], r["indication_id"]) in modality_by_ti]
+    for r in rows:
+        r["primary_modality"] = modality_by_ti[(r["target_id"], r["indication_id"])]
 
     print(f"Total T-I with modality: {len(rows)}")
     modality_counts = Counter(r["primary_modality"] or "unknown" for r in rows)
@@ -107,12 +106,13 @@ def main():
             continue
         X = np.stack([_ml.row_to_feature_vector(r) for r in sub])
         y = np.array([1 if r["y_strict"] else 0 for r in sub], dtype=np.int64)
+        groups = np.array([r["target_id"] for r in sub], dtype=np.int64)
         if y.sum() < 5:
             print(f"  {m:<20} SKIP (< 5 positives)")
             continue
         X_log = _stack.log_transform_features(X, _ml.FEATURE_NAMES)
-        oof = _robust.cv_predict_strict(_stack.make_logreg_l2, X_log, y,
-                                         n_splits=min(5, int(y.sum())))
+        oof = group_cv_predict(_stack.make_logreg_l2, X_log, y, groups,
+                               n_splits=min(5, len(set(groups))))
         auc, auc_lo, auc_hi = _runner.bootstrap_metric(y.tolist(), oof.tolist(), _runner.auc_roc)
         rs10 = _runner.rs_by_top_decile(y.tolist(), oof.tolist())
         r10 = _runner.recall_at_top_k(y.tolist(), oof.tolist(), 0.10)
@@ -127,11 +127,11 @@ def main():
                    n_ti_pairs, n_approved, n_failed, auc_roc, auc_roc_ci_lo, auc_roc_ci_hi,
                    rs_top_decile, recall_at_10pct, precision_at_10pct, notes)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (f"logreg_strict_{m}_v1", "v3_strict",
-                  f"ti_phase2plus_strict_modality_{m}", len(sub), int(y.sum()),
+            """, (f"logreg_strict_{m}_v2_hpo", "v2_hpo",
+                  f"ti_phase2plus_strict_modality_{m}_holdout_target", len(sub), int(y.sum()),
                   int(len(sub) - y.sum()),
                   auc, auc_lo, auc_hi, rs10, r10, p10,
-                  f"Per-modality LogReg 5-fold CV OOF on strict outcome, modality={m}"))
+                  f"Per-modality LogReg GroupKFold(target) OOF on strict outcome, modality={m}, corrected HPO"))
             conn.commit()
         conn.close()
 

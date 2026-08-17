@@ -84,8 +84,8 @@ def load_cohort(conn, min_phase: int = 2):
         return cur.fetchall()
 
 
-def row_to_evidence_context(row: dict) -> Tuple[dict, dict]:
-    """Convert a cohort row to (evidence_dict, context_dict)."""
+def row_to_evidence_context(row: dict) -> Tuple[dict, dict, bool]:
+    """Convert a cohort row to (evidence_dict, context_dict, approved_label)."""
     evidence = {
         "A_genetics": {
             "nelson_tier": row.get("nelson_tier"),
@@ -99,6 +99,7 @@ def row_to_evidence_context(row: dict) -> Tuple[dict, dict]:
             "ot_somatic_score_max": row.get("ot_somatic_score_max"),
             "ot_rna_expression_max": row.get("ot_rna_expression_max"),
             "ot_is_mendelian_any": row.get("ot_is_mendelian_any"),
+            "n_hpo_phenotypes": row.get("n_hpo_phenotypes"),
         },
         "B_mechanistic": {
             "line_b_lit": row.get("line_b_lit"),
@@ -123,7 +124,6 @@ def row_to_evidence_context(row: dict) -> Tuple[dict, dict]:
             "line_d_lit": row.get("line_d_lit"),
             "ot_animal_model_max": row.get("ot_animal_model_max"),
             "impc_n_phenotypes": row.get("impc_n_phenotypes"),
-            "n_hpo_phenotypes": row.get("n_hpo_phenotypes"),
         },
         "E_pd": {
             "line_e_lit": row.get("line_e_lit"),

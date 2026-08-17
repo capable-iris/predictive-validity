@@ -2,7 +2,7 @@
 
 This is our most stringent evaluation:
 - Strict outcome (approved for THIS indication)
-- Phase 1+ cohort (13,639 T-I pairs, no phase filter)
+- Phase 1+ cohort (13,821 T-I pairs as of 2026-08-17, no phase filter)
 - 5-fold GroupKFold on target_id (no target appears in both train and test)
 - Stacked ensemble with log-transformed features
 
@@ -85,10 +85,11 @@ def main():
     print(f"  AUC = {auc:.3f} [{auc_lo:.3f}, {auc_hi:.3f}]")
     print(f"  Brier = {brier:.3f}, R@10% = {r10:.3f}, P@10% = {p10:.3f}, RS10 = {rs10:.2f}, ECE = {ece:.3f}")
 
-    _robust.eval_and_store("stacked_final_v1", oof, y, rows,
+    _robust.eval_and_store("stacked_final_v2_hpo", oof, y,
                             "ti_phase1plus_strict_holdout_target",
                             "FINAL benchmark: Phase 1+ strict cohort, GroupKFold on target_id, "
-                            "stacked LogReg + robust-LGB + RF meta ensemble, log-transformed counts")
+                            "stacked LogReg + robust-LGB + RF meta ensemble, log-transformed counts, corrected HPO",
+                            scoring_version="v2_hpo")
 
     # LogReg alone with GroupKFold
     print(f"\n== LogReg alone (held-out-target GroupKFold, Phase 1+, strict) ==")
@@ -107,9 +108,10 @@ def main():
     print(f"  AUC = {auc:.3f} [{auc_lo:.3f}, {auc_hi:.3f}]")
     print(f"  R@10% = {r10:.3f}, P@10% = {p10:.3f}, RS10 = {rs10:.2f}, ECE = {ece:.3f}")
 
-    _robust.eval_and_store("logreg_final_v1", oof2, y, rows,
+    _robust.eval_and_store("logreg_final_v2_hpo", oof2, y,
                             "ti_phase1plus_strict_holdout_target",
-                            "FINAL: LogReg L2, GroupKFold(target), Phase 1+ strict, log-transformed")
+                            "FINAL: LogReg L2, GroupKFold(target), Phase 1+ strict, log-transformed, corrected HPO",
+                            scoring_version="v2_hpo")
 
 
 if __name__ == "__main__":

@@ -90,16 +90,24 @@ def row_to_features_strict(row, precedent_dict):
     return np.array(feats, dtype=np.float64)
 
 
-def run(cutoff: date, scorer_name="lightgbm_strict_timemachine_v1", model_ctor=_ml.make_lgb):
-    print(f"\n== Strict Time-Machine: cutoff={cutoff}, {scorer_name} ==")
+def load_analysis_data():
+    """Load the shared cohort and precedent lookup once for all backtests."""
     conn = psycopg2.connect(DB_URL)
     precedent = load_precedent_table(conn)
     print(f"  precedent lookup: {len(precedent)} entries")
-
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(COHORT_SQL)
         rows = cur.fetchall()
     print(f"  cohort n = {len(rows)}")
+    conn.close()
+    return precedent, rows
+
+
+def run(cutoff: date, scorer_name="lightgbm_strict_timemachine_v1",
+        model_ctor=_ml.make_lgb, precedent=None, rows=None):
+    print(f"\n== Strict Time-Machine: cutoff={cutoff}, {scorer_name} ==")
+    if precedent is None or rows is None:
+        precedent, rows = load_analysis_data()
 
     train = [r for r in rows if r["first_trial_date"] < cutoff]
     test = [r for r in rows if r["first_trial_date"] >= cutoff]
@@ -114,7 +122,6 @@ def run(cutoff: date, scorer_name="lightgbm_strict_timemachine_v1", model_ctor=_
 
     if y_train.sum() < 5 or y_test.sum() < 5:
         print("  Insufficient positives in train or test. Skipping.")
-        conn.close()
         return
 
     model = model_ctor()
@@ -132,6 +139,7 @@ def run(cutoff: date, scorer_name="lightgbm_strict_timemachine_v1", model_ctor=_
     print(f"  AUC = {auc:.3f} [{auc_lo:.3f}, {auc_hi:.3f}]")
     print(f"  Brier = {brier:.3f}, R@10% = {r10:.3f}, P@10% = {p10:.3f}, RS10 = {rs10:.2f}, ECE = {ece:.3f}")
 
+    conn = psycopg2.connect(DB_URL)
     with conn.cursor() as cur:
         cur.execute("""
             INSERT INTO preclin.benchmark_run
@@ -141,17 +149,20 @@ def run(cutoff: date, scorer_name="lightgbm_strict_timemachine_v1", model_ctor=_
                recall_at_10pct, precision_at_10pct, rs_top_decile,
                calibration_ece, notes)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (scorer_name, "v3_strict_time_cutoff", cutoff,
+        """, (scorer_name, "v2_hpo", cutoff,
               f"ti_phase2plus_strict_post_{cutoff.year}", len(y_test),
               int(y_test.sum()), int(len(y_test) - y_test.sum()),
               auc, auc_lo, auc_hi, brier, r10, p10, rs10, ece,
               f"STRICT per-T-I outcome + time-cutoff family precedent, "
-              f"cutoff={cutoff}, train n={len(train)}"))
+              f"cutoff={cutoff}, train n={len(train)}, corrected HPO"))
         conn.commit()
     conn.close()
 
 
 if __name__ == "__main__":
+    precedent, rows = load_analysis_data()
     for cutoff in [date(2017, 1, 1), date(2019, 1, 1), date(2021, 1, 1)]:
-        run(cutoff, "lightgbm_strict_timemachine_v1", _ml.make_lgb)
-        run(cutoff, "logreg_strict_timemachine_v1", _ml.make_logreg)
+        run(cutoff, "lightgbm_strict_timemachine_v2_hpo", _ml.make_lgb,
+            precedent, rows)
+        run(cutoff, "logreg_strict_timemachine_v2_hpo", _ml.make_logreg,
+            precedent, rows)

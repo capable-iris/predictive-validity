@@ -99,10 +99,11 @@ def main():
     print(f"AUC = {auc:.3f} [{auc_lo:.3f}, {auc_hi:.3f}]")
     print(f"Brier = {brier:.3f}, R@10% = {r10:.3f}, P@10% = {p10:.3f}, RS10 = {rs10:.2f}, ECE = {ece:.3f}")
 
-    _robust.eval_and_store("logreg_family_v1", oof, y, rows,
+    _robust.eval_and_store("logreg_family_v2_hpo", oof, y,
                             "ti_phase1plus_strict_holdout_target",
                             "LogReg + target-family one-hot + family x ClinGen interactions, "
-                            "Phase 1+ strict, GroupKFold on target")
+                            "Phase 1+ strict, GroupKFold on target, corrected HPO",
+                            scoring_version="v2_hpo")
 
     # Now the stacked version — use standard LGB without monotonic constraints
     # (they'd need to match new feature dim)
@@ -148,9 +149,10 @@ def main():
     print(f"AUC = {auc:.3f} [{auc_lo:.3f}, {auc_hi:.3f}]")
     print(f"Brier = {brier:.3f}, R@10% = {r10:.3f}, P@10% = {p10:.3f}, RS10 = {rs10:.2f}, ECE = {ece:.3f}")
 
-    _robust.eval_and_store("stacked_family_v1", oof2, y, rows,
+    _robust.eval_and_store("stacked_family_v2_hpo", oof2, y,
                             "ti_phase1plus_strict_holdout_target",
-                            "Stacked ensemble with family features. Held-out-target Ph1+ strict.")
+                            "Stacked ensemble with family features. Held-out-target Ph1+ strict, corrected HPO.",
+                            scoring_version="v2_hpo")
 
 
 if __name__ == "__main__":

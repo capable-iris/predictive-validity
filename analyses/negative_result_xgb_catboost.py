@@ -119,7 +119,8 @@ def eval_model(name, model_ctor, X, y, groups, cohort_def, notes):
     ece = _runner.calibration_ece(y_list, p_list)
     print(f"  AUC = {auc:.3f} [{auc_lo:.3f}, {auc_hi:.3f}]")
     print(f"  Brier = {brier:.3f}, R@10% = {r10:.3f}, P@10% = {p10:.3f}, RS10 = {rs10:.2f}, ECE = {ece:.3f}")
-    _robust.eval_and_store(name, oof, y, [{}] * len(y), cohort_def, notes)
+    _robust.eval_and_store(name, oof, y, cohort_def, notes,
+                           scoring_version="v2_hpo")
     return oof
 
 
@@ -140,18 +141,18 @@ def main():
     # Fill NaN for tree models that don't handle them (XGBoost handles, CatBoost handles too)
     X_ext_filled = np.nan_to_num(X_ext, nan=0.0)
 
-    eval_model("xgboost_final_v1", make_xgb, X_ext, y, groups,
+    eval_model("xgboost_final_v2_hpo", make_xgb, X_ext, y, groups,
                "ti_phase1plus_strict_holdout_target",
-               "XGBoost 300 trees, depth 4, on Phase 1+ strict + interactions, GroupKFold")
+               "XGBoost 300 trees, depth 4, on Phase 1+ strict + interactions, GroupKFold, corrected HPO")
 
-    eval_model("catboost_final_v1", make_catboost, X_ext_filled, y, groups,
+    eval_model("catboost_final_v2_hpo", make_catboost, X_ext_filled, y, groups,
                "ti_phase1plus_strict_holdout_target",
-               "CatBoost 300 iter, depth 4, on Phase 1+ strict + interactions, GroupKFold")
+               "CatBoost 300 iter, depth 4, on Phase 1+ strict + interactions, GroupKFold, corrected HPO")
 
     # Recheck logreg with interactions
-    eval_model("logreg_interactions_v1", _stack.make_logreg_l2, X_ext_filled, y, groups,
+    eval_model("logreg_interactions_v2_hpo", _stack.make_logreg_l2, X_ext_filled, y, groups,
                "ti_phase1plus_strict_holdout_target",
-               "LogReg L2 + interactions, Phase 1+ strict, GroupKFold")
+               "LogReg L2 + interactions, Phase 1+ strict, GroupKFold, corrected HPO")
 
 
 if __name__ == "__main__":

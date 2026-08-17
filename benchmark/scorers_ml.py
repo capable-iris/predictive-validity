@@ -62,7 +62,7 @@ DB_URL = os.environ["DATABASE_URL"]
 NUMERIC_FEATURES = [
     # A. Genetics
     "mendelian_n", "mendelian_n_dominant", "mendelian_n_recessive",
-    "clingen_n_strong", "gwas_n_sig",
+    "clingen_n_strong", "gwas_n_sig", "n_hpo_phenotypes",
     "ot_genetic_max", "ot_somatic_score_max", "ot_rna_expression_max",
     "ot_l2g_score_max",
     # B. Mechanistic
@@ -73,7 +73,7 @@ NUMERIC_FEATURES = [
     # C. Cell
     "line_c_lit", "depmap_n_dep_lineages", "depmap_mean_effect",
     # D. Animal
-    "line_d_lit", "ot_animal_model_max", "impc_n_phenotypes", "n_hpo_phenotypes",
+    "line_d_lit", "ot_animal_model_max", "impc_n_phenotypes",
     # E. Human PD
     "line_e_lit",
     # H. Safety
@@ -95,6 +95,59 @@ THERAPEUTIC_AREAS = ["oncology", "neuro", "autoimmune", "cv", "metabolic",
 FEATURE_NAMES = (NUMERIC_FEATURES + BOOL_FEATURES +
                  [f"nelson_{t}" for t in NELSON_TIERS] +
                  [f"ta_{a}" for a in THERAPEUTIC_AREAS])
+
+# Canonical evidence category for category-ablation and reporting. Nelson
+# one-hot features are assigned below by prefix because they are generated.
+FEATURE_CATEGORIES = {
+    # A. Human genetics
+    "mendelian_n": "A_genetics",
+    "mendelian_n_dominant": "A_genetics",
+    "mendelian_n_recessive": "A_genetics",
+    "clingen_n_strong": "A_genetics",
+    "gwas_n_sig": "A_genetics",
+    "n_hpo_phenotypes": "A_genetics",
+    "ot_genetic_max": "A_genetics",
+    "ot_somatic_score_max": "A_genetics",
+    "ot_rna_expression_max": "A_genetics",
+    "ot_l2g_score_max": "A_genetics",
+    "ot_is_mendelian_any": "A_genetics",
+    # B. Mechanistic
+    "line_b_lit": "B_mechanistic",
+    "tau_specificity": "B_mechanistic",
+    "sc_tau_specificity": "B_mechanistic",
+    "n_ppi_partners": "B_mechanistic",
+    "n_reactome_pathways": "B_mechanistic",
+    "n_go_biological_process": "B_mechanistic",
+    "n_go_molecular_function": "B_mechanistic",
+    "n_go_cellular_component": "B_mechanistic",
+    "max_tissue_tpm": "B_mechanistic",
+    "n_high_tissues": "B_mechanistic",
+    "sc_max_cell_value": "B_mechanistic",
+    "sc_n_cell_types_expressed": "B_mechanistic",
+    "tractability_sm": "B_mechanistic",
+    "tractability_ab": "B_mechanistic",
+    "tractability_protac": "B_mechanistic",
+    # C. Cell
+    "line_c_lit": "C_cell",
+    "depmap_n_dep_lineages": "C_cell",
+    "depmap_mean_effect": "C_cell",
+    "depmap_pan_essential": "C_cell",
+    # D. Animal
+    "line_d_lit": "D_animal",
+    "ot_animal_model_max": "D_animal",
+    "impc_n_phenotypes": "D_animal",
+    # E. Human PD
+    "line_e_lit": "E_pd",
+    # H. Safety
+    "gnomad_pli": "H_safety",
+    "gnomad_loeuf": "H_safety",
+    # I. Landscape
+    "family_approved_count": "I_landscape",
+    "gene_approved_count": "I_landscape",
+    "n_causal_diseases": "I_landscape",
+    "n_suggestive_diseases": "I_landscape",
+    "n_dgidb_drugs": "I_landscape",
+}
 
 
 def row_to_feature_vector(row: dict) -> np.ndarray:
@@ -289,7 +342,7 @@ def load_cohort_features(cohort_loader=load_strict, label_key="y_strict"):
 # Runner (for standalone `python3 scorers_ml.py`)
 # ============================================================
 
-def eval_and_store(scorer_name, oof, y, cohort_def, notes):
+def eval_and_store(scorer_name, oof, y, cohort_def, notes, scoring_version="v1"):
     from psycopg2.extras import execute_values
     y_list, p_list = y.tolist(), oof.tolist()
     auc, auc_lo, auc_hi = _runner.bootstrap_metric(y_list, p_list, _runner.auc_roc)
@@ -311,7 +364,7 @@ def eval_and_store(scorer_name, oof, y, cohort_def, notes):
                recall_at_10pct, precision_at_10pct, rs_top_decile,
                calibration_ece, notes)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (scorer_name, "v1", cohort_def, len(y),
+        """, (scorer_name, scoring_version, cohort_def, len(y),
               int(y.sum()), int(len(y) - y.sum()),
               auc, auc_lo, auc_hi, brier, r10, p10, rs10, ece, notes))
         conn.commit()

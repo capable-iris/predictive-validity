@@ -1,5 +1,10 @@
 # Results
 
+**Refreshed 2026-08-17:** headline, strict-cohort robustness, ablation,
+time-machine, per-modality, HPO relative-success, and leaderboard results were
+rerun after correcting HPO phenotype breadth. Paid LLM scoring and the
+descriptive pathway-wrongness section were not rerun.
+
 ## Headline
 
 **Predicting FDA approval for a specific `(target × indication)` pair from public preclinical evidence:**
@@ -8,77 +13,81 @@ Best model: stacked ensemble (LogReg + regularized LightGBM + RandomForest), eva
 
 | Metric | Value |
 |---|---|
-| **AUC** | **0.825 [0.797, 0.849]** |
-| **RS (top 10%)** | **13.67** (top decile enriched 13.7× for approvals) |
-| **Recall @ top 10%** | 0.60 |
-| ECE | 0.013 (well-calibrated) |
-| Cohort | Phase 1+ target-matched T-I pairs, n=13,639 |
-| Base rate | 2.95% |
+| **AUC** | **0.821 [0.795, 0.847]** |
+| **RS (top 10%)** | **13.31** (top decile enriched 13.3× for approvals) |
+| **Recall @ top 10%** | 0.597 |
+| ECE | 0.012 (well-calibrated) |
+| Cohort | Phase 1+ target-matched T-I pairs, n=13,821 |
+| Base rate | 2.92% (404 approvals) |
 
 ## Full leaderboard — strict per-T-I outcome
 
-Phase 1+ cohort (n=13,639), 5-fold GroupKFold on `target_id`:
+Phase 1+ cohort (n=13,821), 5-fold GroupKFold on `target_id`:
 
 | Rank | Scorer | AUC (95% CI) | RS(top 10%) | ECE | R@10% | P@10% |
 |---|---|---|---|---|---|---|
-| 1 | stacked_final_v1 | **0.825 [0.797, 0.849]** | **13.67** | 0.013 | 0.603 | 0.178 |
-| 2 | logreg_final_v1 | 0.822 [0.796, 0.851] | 13.53 | 0.268 | 0.600 | 0.177 |
-| 3 | stacked_family_v1 | 0.815 [0.790, 0.841] | 13.25 | 0.014 | 0.596 | 0.176 |
-| 4 | logreg_interactions_v1 | 0.812 [0.786, 0.842] | 12.21 | 0.271 | 0.576 | 0.170 |
-| 5 | xgboost_final_v1 | 0.803 [0.775, 0.830] | 11.96 | 0.107 | 0.571 | 0.169 |
-| 6 | catboost_final_v1 | 0.795 [0.768, 0.824] | 12.21 | 0.216 | 0.576 | 0.170 |
+| 1 | stacked_final_v2_hpo | **0.821 [0.795, 0.847]** | **13.31** | 0.012 | 0.597 | 0.174 |
+| 2 | logreg_final_v2_hpo | 0.818 [0.789, 0.846] | 13.73 | 0.269 | 0.604 | 0.177 |
+| 3 | logreg_interactions_v2_hpo | 0.815 [0.790, 0.842] | 11.66 | 0.273 | 0.564 | 0.165 |
+| 4 | stacked_family_v2_hpo | 0.814 [0.787, 0.839] | 12.26 | 0.014 | 0.577 | 0.169 |
+| 5 | logreg_family_v2_hpo | 0.812 [0.788, 0.838] | 13.45 | 0.264 | 0.599 | 0.175 |
+| 6 | xgboost_final_v2_hpo | 0.806 [0.778, 0.831] | 13.04 | 0.107 | 0.592 | 0.173 |
+| 7 | catboost_final_v2_hpo | 0.806 [0.769, 0.833] | 12.39 | 0.218 | 0.579 | 0.169 |
 
-**External-model comparisons (strict Ph2+, cohort n=8,035):**
+**External-model comparisons (strict Ph2+, cohort n=8,130):**
 
 | Scorer | Method | AUC (95% CI) | RS(top 10%) |
 |---|---|---|---|
-| logreg_strict_v1 | Trained LogReg | 0.826 [0.801, 0.851] | 13.11 |
-| pheiron_rs_composite_v1 | Untrained published RS | 0.615 [0.589, 0.641] | 5.92 |
-| sonnet_agent_sdk_v1 | LLM reads evidence | 0.633 [0.552, 0.707] | 1.84 |
-| random_v1 | Uniform | 0.509 [0.485, 0.539] | 1.01 |
+| logreg_holdout_target_v2_hpo | Trained LogReg, GroupKFold(target) | 0.819 [0.795, 0.846] | 12.26 |
+| pheiron_rs_composite_v2_hpo | Untrained published RS | 0.611 [0.587, 0.648] | 5.66 |
 
-**Trained ML beats published rule-based methodology by 21pp AUC, LLM-agent by 19pp.**
+**Trained ML beats the refreshed published rule-based methodology by 20.8pp AUC.**
+The paid LLM-agent comparison was not rerun for this correction.
 
-## Cross-cohort robustness
+## Strict-cohort robustness
 
 Best model per variant:
 
 | Cohort variant | n | Base rate | Best AUC | RS(top 10%) |
 |---|---|---|---|---|
-| Loose (any-indication), Ph2+, random-split | 2,611 | 28.4% | 0.917 (LGB) | 4.70 |
-| Loose, Ph2+, held-out target | 2,611 | 28.4% | 0.804 (LogReg) | 12.08 |
-| Loose, Ph2+ time-machine 2019 | 1,149 | 20.7% | 0.860 (LGB) | 6.08 |
-| Strict, Ph2+, random-split | 8,035 | 5.0% | 0.829 (stack) | 12.84 |
-| Strict, Ph2+, held-out target | 8,035 | 5.0% | 0.804 (LogReg) | 12.08 |
-| Strict, Ph2+ time-machine 2019 | 3,522 | 0.7% | 0.769 (LogReg) | 12.28 |
-| Strict, Ph1+, random-split | 13,639 | 2.95% | 0.838 (stack) | 13.81 |
-| **Strict, Ph1+, held-out target** | **13,639** | **2.95%** | **0.825 (stack)** | **13.67** |
+| Strict, Ph2+, random-split | 8,130 | 5.0% | 0.820 (stack) | 12.51 |
+| Strict, Ph2+, held-out target | 8,130 | 5.0% | 0.819 (LogReg) | 12.26 |
+| Strict, Ph2+ time-machine 2019 | 3,597 | 0.75% | 0.796 (LogReg) | 21.36 |
+| Strict, Ph1+, random-split | 13,821 | 2.92% | 0.836 (stack) | 14.46 |
+| **Strict, Ph1+, held-out target** | **13,821** | **2.92%** | **0.821 (stack)** | **13.31** |
+
+Loose-outcome rows from the prior report were omitted because they were not
+part of this strict-outcome refresh.
 
 ## Ablation — what makes the AUC
 
-Full LogReg (strict Ph2+) = 0.829. Leave-one-category-out:
+Full LogReg (strict Ph2+, GroupKFold by target) = 0.819. Leave-one-category-out:
 
 | Removed category | Remaining AUC | ΔAUC |
 |---|---|---|
-| **A. Genetics** | 0.651 | **−17.7pp** — dominant |
-| Context (Nelson tier + TA) | 0.811 | −1.8pp |
-| B. Mechanistic | 0.822 | −0.6pp |
-| E. Human PD | 0.826 | −0.3pp |
-| H. Safety | 0.827 | −0.2pp |
-| I. Landscape | 0.827 | −0.1pp |
-| **C. Cell** | 0.829 | **+0.0pp — no marginal signal** |
-| **D. Animal** | 0.829 | **+0.0pp — no marginal signal** |
+| **A. Human genetics** | 0.620 | **−19.9pp** — dominant |
+| Therapeutic-area context | 0.806 | −1.3pp |
+| B. Mechanistic | 0.810 | −0.9pp |
+| H. Safety | 0.816 | −0.3pp |
+| D. Animal | 0.818 | −0.2pp |
+| I. Landscape | 0.820 | +0.0pp |
+| E. Human PD | 0.820 | +0.1pp |
+| C. Cell | 0.822 | +0.3pp |
 
-Genetics accounts for ~18pp of AUC. Target-level cell + animal literature contribute exactly zero on top of genetics — a clean measurement of publication-bias saturation.
+Human genetics accounts for ~20pp of AUC. Target-level cell evidence has no
+positive marginal contribution in this model, while animal evidence adds only
+~0.2pp. HPO phenotype breadth is directionally coherent as a pleiotropy risk
+(RS 0.72; LogReg coefficient −0.177).
 
-## Per-modality (STRICT, LogReg)
+## Per-modality (STRICT, LogReg, GroupKFold by target)
 
 | Modality | n | AUC (95% CI) | RS(top 10%) |
 |---|---|---|---|
-| biologic (mAb/protein/peptide) | 762 | 0.832 [0.778, 0.872] | 9.86 |
-| small_molecule | 961 | 0.824 [0.792, 0.862] | 6.56 |
+| biologic (mAb/protein/peptide) | 884 | 0.817 [0.774, 0.861] | 10.50 |
+| small_molecule | 1,100 | 0.797 [0.764, 0.837] | 6.95 |
 
-Small-mol and biologic predicted equally well. Genetic-medicine and cell-therapy cohorts too small for stable CV.
+The confidence intervals overlap. Genetic-medicine and cell-therapy cohorts
+remain too small for stable CV.
 
 ## Pathway wrongness — how often does strong evidence still fail?
 
@@ -108,7 +117,7 @@ Best possible preclinical profile → **22% approval rate** at Phase 3. The 78% 
 
 ## Robustness — 12 attacks
 
-Every attack we applied to the benchmark. Each row is a challenge to the AUC 0.825 claim; every one has a fix or acknowledged trade-off.
+Every attack we applied to the benchmark. Each row is a challenge to the AUC 0.821 claim; every one has a fix or acknowledged trade-off.
 
 ### Attacks fixed
 
@@ -117,12 +126,12 @@ Every attack we applied to the benchmark. Each row is a challenge to the AUC 0.8
 | 1 | Loose "any-approval" outcome inflates base rate | `v_target_indication_strict_outcome` — strict per-T-I approval; base rate 5.0% not 23.1% |
 | 2 | Post-outcome features leak (n_sponsors, n_programs, max_phase, ot_known_drug, ot_overall) | Removed from feature set |
 | 3 | family_approved_count could include post-cutoff approvals | `v_target_family_precedent_by_year` — time-cutoff-aware precedent |
-| 4 | Phase 2+ cohort filter = survivorship bias | Also run on Phase 1+ cohort (n=13,639, base rate 2.95%) |
-| 5 | Concept drift / temporal generalization | Time-machine backtest: train pre-2019, test post-2019. LogReg holds AUC 0.77; LightGBM drops to 0.58 |
-| 6 | Random-split K-fold may leak targets | GroupKFold on `target_id`: LogReg drops only 2.2pp; LightGBM drops 6.3pp (overfits) |
+| 4 | Phase 2+ cohort filter = survivorship bias | Also run on Phase 1+ cohort (n=13,821, base rate 2.92%) |
+| 5 | Concept drift / temporal generalization | Time-machine backtest: train pre-2019, test post-2019. LogReg AUC 0.80 [0.68, 0.91]; LightGBM 0.54 |
+| 6 | Random-split K-fold may leak targets | GroupKFold on `target_id`: Phase 1+ stack drops 1.5pp (0.836 → 0.821) |
 | 7 | ML overfitting | Regularized LightGBM with monotonic constraints; report multiple models; unregularized version marked as such |
 | 8 | Metric gaming (AUC alone) | Report AUC + Brier + Recall@10% + Precision@10% + RS(top 10%) + ECE. Cross-checks catch tricks |
-| 9 | Do features match known biology? | Ablation: removing genetics drops AUC 17.7pp; removing cell/animal drops 0pp. Matches published RS direction |
+| 9 | Do features match known biology? | Ablation: removing human genetics drops AUC 19.9pp. HPO direction aligns with RS, but overall coefficient/RS sign alignment is only 55% |
 | 12 | Failure-label errors | Haiku + Sonnet dual classification on all 5,510 failed trials with `why_stopped` text; Sonnet-verified for Phase 3 silent kills |
 
 ### Attacks acknowledged (not fixed)
@@ -132,7 +141,7 @@ Every attack we applied to the benchmark. Each row is a challenge to the AUC 0.8
 - **Preclinical / IND-stage kills invisible** — never enter CT.gov.
 - **Feature values are current-day for non-precedent features** — Nelson tier, ClinGen, gnomAD, DepMap, Open Targets values are today's snapshots, not cutoff-time. Time-machine tests temporal split but not feature-freeze.
 - **`n_dgidb_drugs` and `n_causal_diseases`** — current-day, not time-cutoff. Small residual leakage.
-- **Absolute p_approval interpretation is cohort-scoped** — calibrated to 2.95% base rate in Phase 1+ target-matched cohort; not directly comparable to a random drug in the world.
+- **Absolute p_approval interpretation is cohort-scoped** — calibrated to 2.92% base rate in Phase 1+ target-matched cohort; not directly comparable to a random drug in the world.
 
 ## Files
 
@@ -142,4 +151,4 @@ Every attack we applied to the benchmark. Each row is a challenge to the AUC 0.8
 - `db/README.md` — schema runbook
 - `db/QUESTIONS.md` — 25 example SQL queries
 - `db/SCHEMA.md` — evidence taxonomy + database design (reference)
-- `analyses/final_benchmark.py` — reproduces the headline AUC 0.825
+- `analyses/final_benchmark.py` — reproduces the headline AUC 0.821

@@ -36,6 +36,7 @@ RS_TABLE = [
     ("ot_somatic_score_max", 0.3, "gte", 1.63),
     ("mendelian_n_dominant", 1, "gte", 1.35),   # rough estimate
     ("mendelian_n_recessive", 1, "gte", 1.30),
+    ("n_hpo_phenotypes", 10, "gte", 0.72),      # corrected human phenotype pleiotropy risk
     # B. Mechanistic
     ("n_reactome_pathways", 5, "gte", 2.81),   # top signal per our RS
     ("n_ppi_partners", 50, "gte", 1.02),
@@ -51,7 +52,6 @@ RS_TABLE = [
     ("line_d_lit", 2, "gte", 1.47),
     ("ot_animal_model_max", 0.3, "gte", 1.28),
     ("impc_n_phenotypes", 3, "gte", 1.35),
-    ("n_hpo_phenotypes", 10, "gte", 0.69),
     # E. Human PD
     ("line_e_lit", 2, "gte", 2.18),
     # H. Safety
@@ -136,13 +136,13 @@ def main():
                calibration_ece, notes)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING benchmark_run_id
-        """, ("pheiron_rs_composite_v1", "v1_published_RS",
+        """, ("pheiron_rs_composite_v2_hpo", "v2_hpo",
               "ti_phase2plus_strict", len(preds),
               sum(y_list), len(y_list) - sum(y_list),
               auc, auc_lo, auc_hi, brier, r10, p10, rs10, ece,
               "Pheiron-style RS composite: multiplicative product of published RS "
               "per supported dimension. No training on our data — uses published RS from "
-              "Nelson 2015 / Minikel 2024 / Pheiron 2026 methodology."))
+              "Nelson 2015 / Minikel 2024 / Pheiron 2026 methodology; corrected HPO."))
         run_id = cur.fetchone()[0]
         conn.commit()
     conn.close()

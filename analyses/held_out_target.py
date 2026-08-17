@@ -51,8 +51,8 @@ def main():
     X_log = _stack.log_transform_features(X, _ml.FEATURE_NAMES)
 
     for scorer_name, ctor in [
-        ("logreg_holdout_target_v1", _stack.make_logreg_l2),
-        ("lightgbm_robust_holdout_target_v1", _robust.make_lgb_robust),
+        ("logreg_holdout_target_v2_hpo", _stack.make_logreg_l2),
+        ("lightgbm_robust_holdout_target_v2_hpo", _robust.make_lgb_robust),
     ]:
         print(f"\n== {scorer_name} — held-out TARGETS (5-fold group CV) ==")
         oof = group_cv_predict(ctor, X_log, y, groups, n_splits=5)
@@ -78,11 +78,11 @@ def main():
                    recall_at_10pct, precision_at_10pct, rs_top_decile,
                    calibration_ece, notes)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (scorer_name, "v3_holdout_target", "ti_phase2plus_strict_holdout_target",
+            """, (scorer_name, "v2_hpo", "ti_phase2plus_strict_holdout_target",
                   len(rows), int(y.sum()), int(len(rows) - y.sum()),
                   auc, auc_lo, auc_hi, brier, r10, p10, rs10, ece,
                   "Group 5-fold CV by target_id — all T-Is sharing a target in same fold. "
-                  "Tests generalization to unseen targets."))
+                  "Tests generalization to unseen targets; corrected HPO."))
             conn.commit()
         conn.close()
 

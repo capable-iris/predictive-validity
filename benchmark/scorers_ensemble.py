@@ -120,13 +120,14 @@ def main():
     p10 = _runner.precision_at_top_k(y_list, p_list, 0.10)
     rs10 = _runner.rs_by_top_decile(y_list, p_list)
     ece = _runner.calibration_ece(y_list, p_list)
-    print(f"\n== Stacked v1 (LogReg + robust-LGB + RF, log-transformed features) ==")
+    print(f"\n== Stacked v2 HPO (LogReg + robust-LGB + RF, log-transformed features) ==")
     print(f"AUC = {auc:.3f} [{auc_lo:.3f}, {auc_hi:.3f}]")
     print(f"Brier = {brier:.3f}, R@10% = {r10:.3f}, P@10% = {p10:.3f}, RS10 = {rs10:.2f}, ECE = {ece:.3f}")
 
-    _robust.eval_and_store("stacked_v1", oof, y, rows,
+    _robust.eval_and_store("stacked_v2_hpo", oof, y,
                             "ti_phase2plus_strict",
-                            "Level-1: LogReg + robust-LGB + RF; Level-2: LogReg meta on OOF; log-transformed counts.")
+                            "Level-1: LogReg + robust-LGB + RF; Level-2: LogReg meta on OOF; log-transformed counts; corrected HPO.",
+                            scoring_version="v2_hpo")
 
 
 if __name__ == "__main__":

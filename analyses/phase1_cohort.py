@@ -61,7 +61,7 @@ def main():
     X_log = _stack.log_transform_features(X, _ml.FEATURE_NAMES)
 
     # Run stacked v1 and LogReg on this larger cohort
-    print("\n== stacked_ph1_strict_v1 ==")
+    print("\n== stacked_ph1_strict_v2_hpo ==")
     base = [_stack.make_logreg_l2, _robust.make_lgb_robust, _ml.make_rf]
     oof = _stack.stacked_cv_predict(X_log, y, base)
     y_list, p_list = y.tolist(), oof.tolist()
@@ -73,12 +73,13 @@ def main():
     print(f"  AUC = {auc:.3f} [{auc_lo:.3f}, {auc_hi:.3f}]")
     print(f"  R@10% = {r10:.3f}, P@10% = {p10:.3f}, RS10 = {rs10:.2f}, ECE = {ece:.3f}")
 
-    _robust.eval_and_store("stacked_ph1_strict_v1", oof, y, rows,
+    _robust.eval_and_store("stacked_ph1_strict_v2_hpo", oof, y,
                             "ti_phase1plus_strict",
-                            "Phase 1+ strict cohort, stacked ensemble")
+                            "Phase 1+ strict cohort, stacked ensemble, corrected HPO",
+                            scoring_version="v2_hpo")
 
-    print("\n== logreg_ph1_strict_v1 ==")
-    oof = _robust.cv_predict_strict(_stack.make_logreg_l2, X_log, y)
+    print("\n== logreg_ph1_strict_v2_hpo ==")
+    oof, _ = _ml.cv_predict(_stack.make_logreg_l2, X_log, y)
     y_list, p_list = y.tolist(), oof.tolist()
     auc, auc_lo, auc_hi = _runner.bootstrap_metric(y_list, p_list, _runner.auc_roc)
     r10 = _runner.recall_at_top_k(y_list, p_list, 0.10)
@@ -88,9 +89,10 @@ def main():
     print(f"  AUC = {auc:.3f} [{auc_lo:.3f}, {auc_hi:.3f}]")
     print(f"  R@10% = {r10:.3f}, P@10% = {p10:.3f}, RS10 = {rs10:.2f}, ECE = {ece:.3f}")
 
-    _robust.eval_and_store("logreg_ph1_strict_v1", oof, y, rows,
+    _robust.eval_and_store("logreg_ph1_strict_v2_hpo", oof, y,
                             "ti_phase1plus_strict",
-                            "Phase 1+ strict cohort, LogReg calibrated")
+                            "Phase 1+ strict cohort, LogReg, corrected HPO",
+                            scoring_version="v2_hpo")
 
 
 if __name__ == "__main__":
