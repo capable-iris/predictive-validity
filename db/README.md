@@ -35,8 +35,19 @@ Run migrations from the repository root. Fresh ingests already contain these
 changes in the numbered setup files.
 
 ```bash
-.venv/bin/dotenv run -- sh -c 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f db/10_reclassify_hpo_evidence.sql'
+# Validate against the pinned official HPO release without committing.
+.venv/bin/dotenv run -- .venv/bin/python db/14_reclassify_hpo_evidence.py --dry-run
+
+# Apply after review.
+.venv/bin/dotenv run -- .venv/bin/python db/14_reclassify_hpo_evidence.py
 ```
+
+Migration 14 verifies the published SHA-256 for HPO release 2026-06-23,
+materializes the active descendants of `HP:0000118` as a positive allowlist,
+excludes explicit zero-frequency annotations, and recreates the two affected
+Relative Success views from their checked-in definitions. Pass
+`--ontology /path/to/hp.obo` to use an already downloaded copy; the digest is
+still verified.
 
 ## Tables
 

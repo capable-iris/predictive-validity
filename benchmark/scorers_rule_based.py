@@ -251,7 +251,7 @@ RS_WEIGHTS = {
     ("A_genetics", "mendelian_n", 5, "gte", 0.42),                # RS 1.53
     ("A_genetics", "ot_genetic_max", 0.3, "gte", 0.29),           # RS 1.34
     ("A_genetics", "ot_somatic_score_max", 0.3, "gte", 0.49),     # RS 1.63
-    ("A_genetics", "n_hpo_phenotypes", 10, "gte", -0.33),         # RS 0.72 (pleiotropy neg)
+    ("A_genetics", "n_hpo_phenotypes", 10, "gte", -0.37),         # preserve prior weight
     ("B_mechanistic", "tractability_sm", True, "eq", 0.12),
     ("B_mechanistic", "tractability_ab", True, "eq", 0.14),
     ("B_mechanistic", "n_reactome_pathways", 5, "gte", 1.03),     # RS 2.81 (strongest)

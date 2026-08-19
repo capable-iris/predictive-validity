@@ -224,6 +224,17 @@ COMMENT ON TABLE preclin.evidence_score IS 'LONG-form fact table. Every evidence
 COMMENT ON COLUMN preclin.evidence_score.subject_type IS 'target: gene-level | target_indication: gene × disease | drug: drug-level | program: (drug × ind × sponsor)';
 COMMENT ON COLUMN preclin.evidence_score.subject_id2 IS 'For target_indication rows, subject_id = target_id, subject_id2 = indication_id.';
 
+CREATE TABLE IF NOT EXISTS preclin.hpo_phenotypic_abnormality_term (
+  hpo_id            TEXT PRIMARY KEY,
+  ontology_release  TEXT NOT NULL,
+  ontology_sha256   TEXT NOT NULL,
+  branch_root       TEXT NOT NULL,
+  loaded_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE preclin.hpo_phenotypic_abnormality_term IS
+'Positive allowlist of active descendants of HP:0000118 from a pinned official HPO release.';
+
 -- ============================================================
 -- FACT: LLM classifications
 -- ============================================================

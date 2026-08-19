@@ -24,7 +24,7 @@ Answers: **is the target causally implicated in the disease by human genetics?**
 | A4. **Gene burden test** | Rare-variant burden significant for indication | UK Biobank / gnomAD ExWAS | 0/1/2/3 |
 | A5. **Direction concordance** | Drug MoA direction (agonist vs antagonist) matches human LoF/GoF direction | Derived | boolean |
 | A6. **ClinGen validity** | Expert curation of gene-disease causality | ClinGen (`clingen_validity` in gb) | Definitive / Strong / Moderate / Limited / Disputed / Refuted |
-| A7. **Human phenotype breadth** | Number of distinct HPO terms linked to the gene through human gene-disease annotations, excluding mode-of-inheritance terms; a target-level, indication-agnostic pleiotropy proxy | HPO (`gene_phenotypes` in gb; OMIM/ORPHA annotations) | Count; high breadth is evaluated as a risk signal, not indication-specific support |
+| A7. **Human phenotype breadth** | Number of distinct, positively observed terms in the HPO Phenotypic abnormality branch (`HP:0000118`) linked to the gene through human gene-disease annotations; a target-level, indication-agnostic pleiotropy proxy | Pinned official HPO release + `gene_phenotypes` in gb (OMIM/ORPHA annotations) | Count; inheritance, onset/course modifiers, and explicit zero-frequency annotations are excluded |
 
 **Composite:** Nelson tier T0-T4. Predictive effect: **~2.6× approval odds (Minikel 2024)**.
 
