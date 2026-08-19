@@ -17,6 +17,7 @@ import json
 import os
 import sys
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
@@ -42,6 +43,11 @@ class CallResult:
     output_tokens: int
     cost_usd: float
     model: str
+    provider_request_id: str | None
+    system_prompt: str
+    user_prompt: str
+    max_tokens: int
+    temperature: float
 
 
 def get_client():
@@ -86,6 +92,11 @@ def call_with_retry(
                 output_tokens=out_tok,
                 cost_usd=cost,
                 model=model,
+                provider_request_id=getattr(resp, "id", None),
+                system_prompt=system,
+                user_prompt=user,
+                max_tokens=max_tokens,
+                temperature=temperature,
             )
         except Exception as e:
             if attempt == max_attempts - 1:
@@ -134,12 +145,22 @@ def extract_json_block(text: str) -> dict:
 def annotate(row: dict, result: CallResult, prompt_version: str) -> dict:
     """Add the canonical audit-trail fields to a parsed classifier row.
 
-    Every classifier row records: which model produced it, which prompt version
-    generated it, input/output token counts, and USD cost. All computed from
-    the API response — the LLM never produces these fields.
+    Every classifier row records the exact prompts and raw response in addition
+    to model, version, usage, and cost. These underscore-prefixed fields are
+    audit metadata added by the caller; the LLM never produces them.
     """
+    row["_run_id"] = str(uuid.uuid4())
+    row["_provider"] = "anthropic"
+    row["_provider_request_id"] = result.provider_request_id
     row["_model"] = result.model
     row["_prompt_version"] = prompt_version
+    row["_system_prompt"] = result.system_prompt
+    row["_user_prompt"] = result.user_prompt
+    row["_raw_response"] = result.text
+    row["_model_parameters"] = {
+        "max_tokens": result.max_tokens,
+        "temperature": result.temperature,
+    }
     row["_input_tokens"] = result.input_tokens
     row["_output_tokens"] = result.output_tokens
     row["_cost_usd"] = round(result.cost_usd, 6)

@@ -6,7 +6,7 @@ but never appear in `preclin.approval`. Queries the LLM with all known trial
 metadata (title, phase, why_stopped, dates) plus optional press-release
 context (if a companion cache is supplied) and returns a category.
 
-Writes JSONL matching the schema `db/02_ingest.py` reads at
+Writes audited JSONL matching the schema `db/13_ingest_llm_outputs.py` reads at
 `data/silent_kill_verified.jsonl` (BASE / silent_kill_verified.jsonl).
 
 Output row schema:

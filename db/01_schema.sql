@@ -252,6 +252,103 @@ CREATE INDEX IF NOT EXISTS idx_cls_model ON preclin.classification(classifier_mo
 COMMENT ON TABLE preclin.classification IS 'LLM outputs: why_stopped, silent_kill_verify, target_resolution. Multiple classifiers coexist per subject; disagreement is directly queryable.';
 
 -- ============================================================
+-- PROVENANCE: immutable sources + generic LLM runs
+-- (also created/backfilled idempotently by migration 10)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS preclin.source_document (
+  source_document_id BIGSERIAL PRIMARY KEY,
+  source_type        TEXT NOT NULL,
+  source_name        TEXT NOT NULL,
+  external_id        TEXT NOT NULL,
+  source_version     TEXT,
+  source_url         TEXT,
+  title              TEXT,
+  abstract_text      TEXT,
+  body_text          TEXT,
+  raw_content        JSONB,
+  raw_content_text   TEXT,
+  media_type         TEXT NOT NULL,
+  language           TEXT,
+  content_sha256     TEXT NOT NULL CHECK (content_sha256 ~ '^[0-9a-f]{64}$'),
+  source_updated_at  TIMESTAMPTZ,
+  retrieved_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_seen_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  retrieval_method   TEXT NOT NULL,
+  attribution        TEXT,
+  rights_notice      TEXT,
+  metadata           JSONB NOT NULL DEFAULT '{}'::jsonb,
+  UNIQUE (source_name, external_id, content_sha256)
+);
+CREATE INDEX IF NOT EXISTS idx_source_document_external
+  ON preclin.source_document (source_name, external_id, retrieved_at DESC, last_seen_at DESC);
+CREATE INDEX IF NOT EXISTS idx_source_document_hash
+  ON preclin.source_document (content_sha256);
+
+CREATE TABLE IF NOT EXISTS preclin.source_document_subject (
+  subject_type       TEXT NOT NULL,
+  subject_key        TEXT NOT NULL,
+  source_document_id BIGINT NOT NULL REFERENCES preclin.source_document(source_document_id) ON DELETE CASCADE,
+  relationship       TEXT NOT NULL,
+  discovered_from    TEXT,
+  link_metadata      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  linked_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (subject_type, subject_key, source_document_id, relationship)
+);
+CREATE INDEX IF NOT EXISTS idx_source_document_subject_doc
+  ON preclin.source_document_subject (source_document_id);
+CREATE INDEX IF NOT EXISTS idx_source_document_subject_subject
+  ON preclin.source_document_subject (subject_type, subject_key, relationship);
+
+CREATE TABLE IF NOT EXISTS preclin.llm_run (
+  run_id               UUID PRIMARY KEY,
+  provider              TEXT,
+  provider_request_id   TEXT,
+  subject_type          TEXT NOT NULL,
+  subject_key           TEXT NOT NULL,
+  classifier_task       TEXT NOT NULL,
+  classifier_model      TEXT NOT NULL,
+  classifier_version    TEXT,
+  system_prompt         TEXT,
+  user_prompt           TEXT,
+  input_sha256          TEXT CHECK (input_sha256 IS NULL OR input_sha256 ~ '^[0-9a-f]{64}$'),
+  raw_response          TEXT,
+  output_sha256         TEXT CHECK (output_sha256 IS NULL OR output_sha256 ~ '^[0-9a-f]{64}$'),
+  parsed_output         JSONB,
+  model_parameters      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  input_tokens          INTEGER,
+  output_tokens         INTEGER,
+  cost_usd              DOUBLE PRECISION,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_llm_run_provider_request
+  ON preclin.llm_run (provider, provider_request_id)
+  WHERE provider_request_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_llm_run_subject
+  ON preclin.llm_run (subject_type, subject_key, classifier_task, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS preclin.llm_run_source (
+  run_id               UUID NOT NULL REFERENCES preclin.llm_run(run_id) ON DELETE CASCADE,
+  source_document_id   BIGINT NOT NULL REFERENCES preclin.source_document(source_document_id),
+  relationship         TEXT NOT NULL DEFAULT 'model_input',
+  ordinal              INTEGER NOT NULL DEFAULT 0,
+  excerpt_text         TEXT,
+  excerpt_sha256       TEXT CHECK (excerpt_sha256 IS NULL OR excerpt_sha256 ~ '^[0-9a-f]{64}$'),
+  PRIMARY KEY (run_id, source_document_id, relationship, ordinal)
+);
+
+CREATE TABLE IF NOT EXISTS preclin.llm_run_evidence_score (
+  run_id       UUID NOT NULL REFERENCES preclin.llm_run(run_id) ON DELETE CASCADE,
+  evidence_id  BIGINT NOT NULL REFERENCES preclin.evidence_score(evidence_id) ON DELETE CASCADE,
+  role         TEXT NOT NULL DEFAULT 'produced',
+  PRIMARY KEY (run_id, evidence_id, role)
+);
+CREATE INDEX IF NOT EXISTS idx_llm_run_evidence_score_evidence
+  ON preclin.llm_run_evidence_score (evidence_id);
+
+ALTER TABLE preclin.classification
+  ADD COLUMN IF NOT EXISTS latest_run_id UUID REFERENCES preclin.llm_run(run_id) ON DELETE SET NULL;
+
+-- ============================================================
 -- METADATA: dimension registry (documentation, not a FK target)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS preclin.evidence_dimension (

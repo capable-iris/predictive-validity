@@ -2,7 +2,8 @@
 
 Consumes: PubMed abstracts (via `analyses/classifiers/pubmed_fetch.py`) OR a
 supplied list of abstracts + PMIDs. Produces one JSON object per target with
-scores 0-3 for each evidence line, matching the schema `db/02_ingest.py`
+scores 0-3 for each evidence line, matching the schema
+`db/13_ingest_llm_outputs.py`
 expects at `data/target_evidence/literature_scores.jsonl`.
 
 Score rubric (from db/01_schema.sql evidence_dimension registry):
@@ -110,16 +111,29 @@ def score_one_target(client, gene: str, abstracts: list[dict], model: str) -> di
             "_model": model,
             "_prompt_version": PROMPT_VERSION,
         }
-    abs_blob = "\n\n".join(
+    provided = abstracts[:60]
+    rendered_abstracts = [
         f"PMID {a['pmid']} | {a.get('title','')} | {a.get('abstract','')[:1500]}"
-        for a in abstracts[:60]
-    )
+        for a in provided
+    ]
+    abs_blob = "\n\n".join(rendered_abstracts)
     user = USER_TEMPLATE.format(gene=gene, abstracts=abs_blob)
     result = call_with_retry(client, model, SYSTEM_PROMPT, user, max_tokens=1024)
     row = extract_json_block(result.text)
     row["gene"] = gene
-    row["_n_abstracts_provided"] = len(abstracts)
-    return annotate(row, result, PROMPT_VERSION)
+    row["_n_abstracts_provided"] = len(provided)
+    annotate(row, result, PROMPT_VERSION)
+    row["_source_documents"] = [
+        {
+            "source_document_id": abstract["source_document_id"],
+            "relationship": "pubmed_abstract_input",
+            "ordinal": ordinal,
+            "excerpt_text": rendered_abstracts[ordinal],
+        }
+        for ordinal, abstract in enumerate(provided)
+        if abstract.get("source_document_id") is not None
+    ]
+    return row
 
 
 def fetch_target_abstracts(cur, gene: str, limit: int = 60) -> list[dict]:
@@ -129,7 +143,34 @@ def fetch_target_abstracts(cur, gene: str, limit: int = 60) -> list[dict]:
     If the table doesn't exist, fall back to entrez fetch (not implemented here;
     users must supply a --abstracts-cache-dir).
     """
-    try:
+    cur.execute("SELECT to_regclass('preclin.source_document_subject')")
+    if cur.fetchone()[0] is not None:
+        cur.execute(
+            """
+            SELECT DISTINCT ON (sd.external_id)
+                   sd.source_document_id, sd.external_id AS pmid,
+                   sd.title, sd.abstract_text AS abstract
+            FROM preclin.source_document_subject sds
+            JOIN preclin.source_document sd USING (source_document_id)
+            WHERE sds.subject_type = 'target'
+              AND upper(sds.subject_key) = upper(%s)
+              AND sd.source_name = 'pubmed'
+              AND sd.abstract_text IS NOT NULL
+            ORDER BY sd.external_id, sd.source_updated_at DESC NULLS LAST,
+                     sd.retrieved_at DESC, sd.source_document_id DESC
+            LIMIT %s
+            """,
+            (gene, limit),
+        )
+        rows = cur.fetchall()
+        if rows:
+            return [
+                dict(zip(("source_document_id", "pmid", "title", "abstract"), row))
+                for row in rows
+            ]
+
+    cur.execute("SELECT to_regclass('preclin.pubmed_target_abstract')")
+    if cur.fetchone()[0] is not None:
         cur.execute(
             """
             SELECT pmid, title, abstract
@@ -141,8 +182,7 @@ def fetch_target_abstracts(cur, gene: str, limit: int = 60) -> list[dict]:
             (gene, limit),
         )
         return [dict(zip(("pmid", "title", "abstract"), r)) for r in cur.fetchall()]
-    except Exception:
-        return []
+    return []
 
 
 def load_abstracts_from_dir(cache_dir: Path, gene: str) -> list[dict]:

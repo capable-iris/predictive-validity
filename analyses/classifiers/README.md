@@ -1,15 +1,15 @@
 # Classifier scripts
 
-The LLM classifiers that produce the JSONL / CSV inputs consumed by
-`db/02_ingest.py`. These are the "Phase 2" pipeline referenced in the top-level
-README's data flow — without them, the `preclin.evidence_score` and
-`preclin.classification` tables can't be extended to new targets or refreshed.
+The LLM classifiers that produce resumable JSONL / CSV outputs. New audited
+JSONL runs are loaded incrementally with `db/13_ingest_llm_outputs.py`;
+`db/02_ingest.py` remains the legacy big-bang bootstrap loader.
 
 **Every script here:**
 - reads Neon DB state to pick which subjects need scoring
 - calls the Anthropic API with a versioned prompt
-- writes a resumable JSONL / CSV that `db/02_ingest.py` can ingest as-is
-- records model, prompt version, token counts, and USD cost per row
+- writes a resumable JSONL / CSV output
+- records the exact system/user prompts, raw response, model parameters,
+  provider request id, prompt version, token counts, and USD cost per row
 
 ## Setup
 
@@ -57,6 +57,13 @@ Every script has a `PROMPT_VERSION` constant. When the prompt changes:
 
 Never edit prompts in place without a version bump. That kills reproducibility.
 
+New classifier JSONL rows receive a unique `_run_id`. After
+`db/10_clinical_trial_source_audit.sql` has been applied,
+`db/13_ingest_llm_outputs.py` stores them in `preclin.llm_run`. Verdicts point
+to their latest run, while literature extraction runs connect to every
+`preclin.evidence_score` fact they produced. Legacy rows remain auditable as
+outputs but are explicitly marked as missing their unrecoverable exact inputs.
+
 ## Concrete recipe — score the neuroprotection candidates
 
 The scoring diagnostic in `analyses/verify_candidate_scores.py` exposed that
@@ -84,8 +91,10 @@ python3 analyses/classifiers/nelson_tier_classify.py \
     --pair CORT:Alzheimer \
     --out data/target_evidence/nelson_tiers_batch_neuro_2026.csv
 
-# 3. Ingest — 02_ingest.py picks up both files automatically
-python3 db/02_ingest.py
+# 3. Incrementally ingest the audited literature runs
+.venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
+    --task target-literature \
+    data/target_evidence/literature_scores_neuro_2026.jsonl
 
 # 4. Rescore
 python3 analyses/score_neuro_candidates.py
@@ -111,10 +120,11 @@ Cumulative spend is also printed after each row while a script runs.
   STRING / Reactome / SIDER / HPO / DGIdb / HPA / GTEx / Open Targets / IMPC).
   Those tables live in `public.*`, populated by a separate project. This repo
   reads from them but does not rebuild them.
-- **PubMed abstract fetching.** `score_target_literature.py` will read from a
+- **Target-literature PubMed abstract fetching.** `score_target_literature.py` will read from a
   `preclin.pubmed_target_abstract(gene, pmid, title, abstract)` cache table if
   one exists, or from a per-gene JSONL cache directory. Providing that cache
-  is outside these scripts' scope — use NCBI EFetch or a paid abstract feed.
+  remains outside these scripts' scope. Trial-linked PubMed abstracts are
+  handled separately by `db/11_ingest_trial_sources.py`.
 
 ## Adding a new classifier
 
@@ -124,6 +134,7 @@ Follow the existing pattern:
 2. Use `common.py` for the Anthropic client, retry, JSON extraction, JSONL
    append, and resumability helpers.
 3. Define `PROMPT_VERSION` and `DEFAULT_MODEL` at module top.
-4. Write to a JSONL / CSV that `db/02_ingest.py` (or a new sibling ingest
-   script) knows how to read.
+4. Write audited JSONL that `db/13_ingest_llm_outputs.py` knows how to read,
+   or add a new explicit task handler there. CSV-only workflows need their own
+   importer because CSV currently drops the exact prompts and raw response.
 5. Add a row to the table above.
