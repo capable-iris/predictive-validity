@@ -61,7 +61,8 @@ New classifier JSONL rows receive a unique `_run_id`. After
 `db/10_clinical_trial_source_audit.sql` has been applied,
 `db/13_ingest_llm_outputs.py` stores them in `preclin.llm_run`. Verdicts point
 to their latest run, while literature extraction runs connect to every
-`preclin.evidence_score` fact they produced. Legacy rows remain auditable as
+`preclin.evidence_score` fact they produced and retain an immutable
+`fact_snapshot` of the run-produced value. Legacy rows remain auditable as
 outputs but are explicitly marked as missing their unrecoverable exact inputs.
 
 ## Concrete recipe — score the neuroprotection candidates
@@ -71,12 +72,17 @@ The scoring diagnostic in `analyses/verify_candidate_scores.py` exposed that
 imputes cohort medians for those. To close the gap:
 
 ```bash
-# 1. Score the 11 candidates' literature evidence
-python3 analyses/classifiers/score_target_literature.py \
+# 1. Import the per-target abstract cache into the canonical source store.
+#    This is required before a paid call so every prompt excerpt has a stable id.
+.venv/bin/dotenv run -- .venv/bin/python db/12_ingest_evidence_abstracts.py \
+    --cache-dir /path/to/per-target-jsonl --subject-type target
+
+# 2. Score the 11 candidates' literature evidence
+.venv/bin/dotenv run -- .venv/bin/python analyses/classifiers/score_target_literature.py \
     --targets UNC13A,NTRK2,ADCYAP1R1,KL,GALR1,NPY1R,GHSR,VIPR2,APLNR,VGF,CORT \
     --out data/target_evidence/literature_scores_neuro_2026.jsonl
 
-# 2. Assign Nelson tiers for each T-I pair
+# 3. Assign Nelson tiers for each T-I pair
 python3 analyses/classifiers/nelson_tier_classify.py \
     --pair UNC13A:ALS \
     --pair NTRK2:Alzheimer \
@@ -91,12 +97,12 @@ python3 analyses/classifiers/nelson_tier_classify.py \
     --pair CORT:Alzheimer \
     --out data/target_evidence/nelson_tiers_batch_neuro_2026.csv
 
-# 3. Incrementally ingest the audited literature runs
+# 4. Incrementally ingest the audited literature runs
 .venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
     --task target-literature \
     data/target_evidence/literature_scores_neuro_2026.jsonl
 
-# 4. Rescore
+# 5. Rescore
 python3 analyses/score_neuro_candidates.py
 ```
 
@@ -120,11 +126,12 @@ Cumulative spend is also printed after each row while a script runs.
   STRING / Reactome / SIDER / HPO / DGIdb / HPA / GTEx / Open Targets / IMPC).
   Those tables live in `public.*`, populated by a separate project. This repo
   reads from them but does not rebuild them.
-- **Target-literature PubMed abstract fetching.** `score_target_literature.py` will read from a
-  `preclin.pubmed_target_abstract(gene, pmid, title, abstract)` cache table if
-  one exists, or from a per-gene JSONL cache directory. Providing that cache
-  remains outside these scripts' scope. Trial-linked PubMed abstracts are
-  handled separately by `db/11_ingest_trial_sources.py`.
+- **Target-literature PubMed abstract discovery.** The scorer reads only
+  canonical PubMed snapshots linked to a target in `preclin.source_document`.
+  Import per-gene JSONL caches with `db/12_ingest_evidence_abstracts.py` first;
+  the scorer fails before any paid call if an input lacks a stable
+  `source_document_id`. Trial-linked abstracts are handled separately by
+  `db/11_ingest_trial_sources.py`.
 
 ## Adding a new classifier
 

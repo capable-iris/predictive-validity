@@ -112,6 +112,39 @@ def normalize_drug(value: str) -> str:
     return re.sub(r"[^a-z0-9]", "", value.lower().strip())
 
 
+def evidence_snapshot(
+    *,
+    subject_type: str,
+    subject_id: int,
+    dimension: str,
+    category: str,
+    source: str,
+    version: str,
+    model: str,
+    value_numeric=None,
+    value_text=None,
+    confidence=None,
+    citation_pmids=None,
+) -> dict:
+    """Return the immutable fact value produced by one extraction run."""
+    return {
+        "subject_type": subject_type,
+        "subject_id": subject_id,
+        "subject_id2": None,
+        "dimension": dimension,
+        "category": category,
+        "value_numeric": value_numeric,
+        "value_text": value_text,
+        "value_boolean": None,
+        "value_json": None,
+        "source": source,
+        "source_version": version,
+        "confidence": confidence,
+        "citation_pmids": [str(value) for value in (citation_pmids or [])],
+        "extracted_by": model,
+    }
+
+
 def read_jsonl(paths: Iterable[Path]):
     for path in paths:
         if not path.is_file():
@@ -365,6 +398,19 @@ def upsert_evidence(
     confidence=None,
     citation_pmids=None,
 ) -> int:
+    snapshot = evidence_snapshot(
+        subject_type=subject_type,
+        subject_id=subject_id,
+        dimension=dimension,
+        category=category,
+        source=source,
+        version=version,
+        model=model,
+        value_numeric=value_numeric,
+        value_text=value_text,
+        confidence=confidence,
+        citation_pmids=citation_pmids,
+    )
     cur.execute(
         """
         SELECT evidence_id
@@ -426,12 +472,27 @@ def upsert_evidence(
         evidence_id = cur.fetchone()[0]
     cur.execute(
         """
-        INSERT INTO preclin.llm_run_evidence_score (run_id, evidence_id, role)
-        VALUES (%s, %s, 'produced')
+        INSERT INTO preclin.llm_run_evidence_score
+          (run_id, evidence_id, role, fact_snapshot)
+        VALUES (%s, %s, 'produced', %s)
         ON CONFLICT DO NOTHING
+        """,
+        (run_id, evidence_id, Json(snapshot)),
+    )
+    cur.execute(
+        """
+        SELECT fact_snapshot
+        FROM preclin.llm_run_evidence_score
+        WHERE run_id = %s AND evidence_id = %s AND role = 'produced'
         """,
         (run_id, evidence_id),
     )
+    stored_snapshot = cur.fetchone()
+    if not stored_snapshot or stored_snapshot[0] != snapshot:
+        raise ValueError(
+            f"run_id {run_id} already links evidence_id {evidence_id} "
+            "with a different immutable fact value"
+        )
     return evidence_id
 
 

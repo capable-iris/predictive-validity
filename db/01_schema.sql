@@ -337,9 +337,11 @@ CREATE TABLE IF NOT EXISTS preclin.llm_run_source (
 );
 
 CREATE TABLE IF NOT EXISTS preclin.llm_run_evidence_score (
-  run_id       UUID NOT NULL REFERENCES preclin.llm_run(run_id) ON DELETE CASCADE,
-  evidence_id  BIGINT NOT NULL REFERENCES preclin.evidence_score(evidence_id) ON DELETE CASCADE,
-  role         TEXT NOT NULL DEFAULT 'produced',
+  run_id        UUID NOT NULL REFERENCES preclin.llm_run(run_id) ON DELETE CASCADE,
+  evidence_id   BIGINT NOT NULL REFERENCES preclin.evidence_score(evidence_id) ON DELETE CASCADE,
+  role          TEXT NOT NULL DEFAULT 'produced',
+  fact_snapshot JSONB NOT NULL,
+  recorded_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (run_id, evidence_id, role)
 );
 CREATE INDEX IF NOT EXISTS idx_llm_run_evidence_score_evidence

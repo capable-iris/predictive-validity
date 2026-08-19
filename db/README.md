@@ -51,7 +51,7 @@ selected trial scope.
 | `preclin.source_document` | varies | Immutable CT.gov, PubMed, and other source snapshots |
 | `preclin.source_document_subject` | varies | Trial/target/drug→source provenance links |
 | `preclin.llm_run_source` | varies | Exact source excerpts supplied to each model call |
-| `preclin.llm_run_evidence_score` | varies | Model run→long-form evidence fact links |
+| `preclin.llm_run_evidence_score` | varies | Model run→current fact link plus immutable run-produced value snapshot |
 | `preclin.evidence_dimension` | 40 | Registry of every evidence dimension |
 | `preclin.benchmark_run` | ~70 | Benchmark leaderboard rows |
 | `preclin.benchmark_prediction` | ~40,000 | Per-(scorer × T-I) predictions |
@@ -70,7 +70,7 @@ selected trial scope.
 - `v_dimension_coverage` — coverage per dimension × subject
 - `v_trial_source_latest` — latest full registry/publication text linked to each NCT id
 - `v_classification_audit` — verdict + exact model input/output + exact/available source links
-- `v_evidence_score_audit` — evidence fact + extraction run + exact abstract excerpts
+- `v_evidence_score_audit` — current fact, immutable run-produced value, extraction run, and exact abstract excerpts
 
 ## Ingest and audit clinical-trial sources
 
@@ -120,6 +120,11 @@ commits all supplied files atomically, and supports `--dry-run`. It never calls
 an LLM or retrieves a source. `02_ingest.py` remains unchanged as the manual
 bootstrap loader for the historical local data bundle.
 
+Target-literature scoring refuses to call a paid model unless every supplied
+abstract is already represented by a canonical `source_document_id`. Import a
+legacy cache with `db/12_ingest_evidence_abstracts.py` before scoring; this
+ensures the completed JSONL can always pass the audited importer.
+
 Backfill abstracts used for target/drug evidence extraction separately:
 
 ```bash
@@ -137,7 +142,10 @@ All full abstracts go in `preclin.source_document.abstract_text`; raw PubMed XML
 or cache payloads remain in `raw_content_text` / `raw_content`. The exact
 possibly-truncated string sent to a model goes in
 `preclin.llm_run_source.excerpt_text`. This distinction lets an auditor compare
-the complete source with precisely what the model saw.
+the complete source with precisely what the model saw. Each evidence link also
+stores `fact_snapshot`, so rerunning the same prompt version may update the
+current `evidence_score` projection without rewriting what an older run
+produced.
 
 Migration 10 groups existing PubMed-derived facts into synthetic legacy runs,
 but marks them `exact_input_unavailable`. `--from-citations` can recover and

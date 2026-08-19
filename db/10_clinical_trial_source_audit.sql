@@ -95,16 +95,48 @@ CREATE TABLE IF NOT EXISTS preclin.llm_run_source (
 );
 
 CREATE TABLE IF NOT EXISTS preclin.llm_run_evidence_score (
-  run_id       UUID NOT NULL REFERENCES preclin.llm_run(run_id) ON DELETE CASCADE,
-  evidence_id  BIGINT NOT NULL REFERENCES preclin.evidence_score(evidence_id) ON DELETE CASCADE,
-  role         TEXT NOT NULL DEFAULT 'produced',
+  run_id        UUID NOT NULL REFERENCES preclin.llm_run(run_id) ON DELETE CASCADE,
+  evidence_id   BIGINT NOT NULL REFERENCES preclin.evidence_score(evidence_id) ON DELETE CASCADE,
+  role          TEXT NOT NULL DEFAULT 'produced',
+  fact_snapshot JSONB NOT NULL,
+  recorded_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (run_id, evidence_id, role)
 );
+ALTER TABLE preclin.llm_run_evidence_score
+  ADD COLUMN IF NOT EXISTS fact_snapshot JSONB,
+  ADD COLUMN IF NOT EXISTS recorded_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+-- The first deployed revision linked runs directly to the mutable current-value
+-- table. Backfill the only value still recoverable for those historical links;
+-- future imports write the immutable run-produced value at insertion time.
+UPDATE preclin.llm_run_evidence_score link
+SET fact_snapshot = jsonb_build_object(
+      'subject_type', es.subject_type,
+      'subject_id', es.subject_id,
+      'subject_id2', es.subject_id2,
+      'dimension', es.dimension,
+      'category', es.category,
+      'value_numeric', es.value_numeric,
+      'value_text', es.value_text,
+      'value_boolean', es.value_boolean,
+      'value_json', es.value_json,
+      'source', es.source,
+      'source_version', es.source_version,
+      'confidence', es.confidence,
+      'citation_pmids', es.citation_pmids,
+      'extracted_by', es.extracted_by
+    )
+FROM preclin.evidence_score es
+WHERE es.evidence_id = link.evidence_id
+  AND link.fact_snapshot IS NULL;
+
+ALTER TABLE preclin.llm_run_evidence_score
+  ALTER COLUMN fact_snapshot SET NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_llm_run_evidence_score_evidence
   ON preclin.llm_run_evidence_score (evidence_id);
 
 COMMENT ON TABLE preclin.llm_run_evidence_score IS
-  'Connects one extraction call to every long-form evidence fact it produced.';
+  'Connects one extraction call to each current evidence row while preserving the immutable value produced by that run in fact_snapshot.';
 
 ALTER TABLE preclin.classification
   ADD COLUMN IF NOT EXISTS latest_run_id UUID REFERENCES preclin.llm_run(run_id) ON DELETE SET NULL;
@@ -173,13 +205,30 @@ SELECT md5(
 FROM legacy_groups
 ON CONFLICT (run_id) DO NOTHING;
 
-INSERT INTO preclin.llm_run_evidence_score (run_id, evidence_id, role)
+INSERT INTO preclin.llm_run_evidence_score
+  (run_id, evidence_id, role, fact_snapshot)
 SELECT md5(
          'legacy-evidence:' || es.subject_type || ':' || es.subject_id::text || ':' ||
          COALESCE(es.subject_id2::text, '') || ':' || es.source || ':' ||
          COALESCE(es.source_version, '')
        )::uuid,
-       es.evidence_id, 'produced'
+       es.evidence_id, 'produced',
+       jsonb_build_object(
+         'subject_type', es.subject_type,
+         'subject_id', es.subject_id,
+         'subject_id2', es.subject_id2,
+         'dimension', es.dimension,
+         'category', es.category,
+         'value_numeric', es.value_numeric,
+         'value_text', es.value_text,
+         'value_boolean', es.value_boolean,
+         'value_json', es.value_json,
+         'source', es.source,
+         'source_version', es.source_version,
+         'confidence', es.confidence,
+         'citation_pmids', es.citation_pmids,
+         'extracted_by', es.extracted_by
+       )
 FROM preclin.evidence_score es
 WHERE es.source IN ('pubmed_haiku', 'pubmed_sonnet')
   AND NOT EXISTS (
@@ -326,7 +375,9 @@ SELECT es.evidence_id,
        r.input_sha256,
        r.output_sha256,
        (r.system_prompt IS NOT NULL AND r.user_prompt IS NOT NULL) AS has_exact_input,
-       COALESCE(src.sources, '[]'::jsonb) AS exact_input_sources
+       COALESCE(src.sources, '[]'::jsonb) AS exact_input_sources,
+       link.fact_snapshot AS run_fact_snapshot,
+       link.recorded_at AS run_fact_recorded_at
 FROM preclin.evidence_score es
 LEFT JOIN preclin.llm_run_evidence_score link USING (evidence_id)
 LEFT JOIN preclin.llm_run r USING (run_id)
@@ -354,6 +405,6 @@ LEFT JOIN LATERAL (
 ) src ON TRUE;
 
 COMMENT ON VIEW preclin.v_evidence_score_audit IS
-  'Evidence facts joined to the exact extraction run and source excerpts that produced them.';
+  'Current evidence rows joined to exact extraction runs and immutable run_fact_snapshot values; unqualified value columns are the current projection and may differ after a later run.';
 
 COMMIT;
