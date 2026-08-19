@@ -16,7 +16,7 @@
 
 **Ground truth ("strict per-indication outcome"):** was any drug hitting this target ever FDA-approved *specifically for this indication*? Not "approved for anything" — that would count e.g. EGFR-approved-for-lung as a positive for `(EGFR, colorectal)`. Strict outcome only counts approval on the exact indication.
 
-**Evidence dimensions (features):** 40+ per target/T-I. Categories: A. Genetics (Nelson tier, ClinGen, Mendelian, GWAS, Open Targets), B. Mechanistic (tractability, tissue Tau, Reactome, PPI, GO), C. Cell (DepMap essentiality, cell literature), D. Animal (IMPC KO phenotypes, Open Targets animal model), E. Human PD engagement (literature score), H. Safety (gnomAD pLI/LOEUF), I. Landscape (family precedent, DGIdb).
+**Evidence dimensions (features):** 40+ per target/T-I. Categories: A. Human genetics (Nelson tier, ClinGen, Mendelian, GWAS, HPO phenotype breadth, Open Targets), B. Mechanistic (tractability, tissue Tau, Reactome, PPI, GO), C. Cell (DepMap essentiality, cell literature), D. Animal (IMPC KO phenotypes, Open Targets animal model), E. Human PD engagement (literature score), H. Safety (gnomAD pLI/LOEUF), I. Landscape (family precedent, DGIdb).
 
 **Evaluation:** 5-fold GroupKFold on `target_id` — no target appears in both train and test folds. Tests whether the model has learned generalizable biology or is memorizing target-specific shortcuts.
 

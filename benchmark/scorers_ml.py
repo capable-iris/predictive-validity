@@ -96,6 +96,60 @@ FEATURE_NAMES = (NUMERIC_FEATURES + BOOL_FEATURES +
                  [f"nelson_{t}" for t in NELSON_TIERS] +
                  [f"ta_{a}" for a in THERAPEUTIC_AREAS])
 
+# Canonical taxonomy used by category-level analyses. Feature order above is
+# intentionally unchanged so this metadata correction cannot affect a fitted
+# model or its predictions.
+FEATURE_CATEGORIES = {
+    # A. Human genetics
+    "mendelian_n": "A_genetics",
+    "mendelian_n_dominant": "A_genetics",
+    "mendelian_n_recessive": "A_genetics",
+    "clingen_n_strong": "A_genetics",
+    "gwas_n_sig": "A_genetics",
+    "n_hpo_phenotypes": "A_genetics",
+    "ot_genetic_max": "A_genetics",
+    "ot_somatic_score_max": "A_genetics",
+    "ot_rna_expression_max": "A_genetics",
+    "ot_l2g_score_max": "A_genetics",
+    "ot_is_mendelian_any": "A_genetics",
+    # B. Mechanistic
+    "line_b_lit": "B_mechanistic",
+    "tractability_sm": "B_mechanistic",
+    "tractability_ab": "B_mechanistic",
+    "tractability_protac": "B_mechanistic",
+    "tau_specificity": "B_mechanistic",
+    "sc_tau_specificity": "B_mechanistic",
+    "n_ppi_partners": "B_mechanistic",
+    "n_reactome_pathways": "B_mechanistic",
+    "n_go_biological_process": "B_mechanistic",
+    "n_go_molecular_function": "B_mechanistic",
+    "n_go_cellular_component": "B_mechanistic",
+    "max_tissue_tpm": "B_mechanistic",
+    "n_high_tissues": "B_mechanistic",
+    "sc_max_cell_value": "B_mechanistic",
+    "sc_n_cell_types_expressed": "B_mechanistic",
+    # C. Cell
+    "line_c_lit": "C_cell",
+    "depmap_n_dep_lineages": "C_cell",
+    "depmap_mean_effect": "C_cell",
+    "depmap_pan_essential": "C_cell",
+    # D. Animal
+    "line_d_lit": "D_animal",
+    "ot_animal_model_max": "D_animal",
+    "impc_n_phenotypes": "D_animal",
+    # E. Human PD
+    "line_e_lit": "E_pd",
+    # H. Safety
+    "gnomad_pli": "H_safety",
+    "gnomad_loeuf": "H_safety",
+    # I. Landscape
+    "family_approved_count": "I_landscape",
+    "gene_approved_count": "I_landscape",
+    "n_causal_diseases": "I_landscape",
+    "n_suggestive_diseases": "I_landscape",
+    "n_dgidb_drugs": "I_landscape",
+}
+
 
 def row_to_feature_vector(row: dict) -> np.ndarray:
     """Turn a cohort row into a numeric feature vector."""

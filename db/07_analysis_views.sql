@@ -54,6 +54,8 @@ tests AS (
     (ot_genetic_max >= 0.3), any_approved FROM ti_pool WHERE ot_genetic_max IS NOT NULL
   UNION ALL SELECT 'A. OT somatic ≥0.3', 'A_genetics',
     (ot_somatic_score_max >= 0.3), any_approved FROM ti_pool WHERE ot_somatic_score_max IS NOT NULL
+  UNION ALL SELECT 'A. HPO phenotype breadth ≥10', 'A_genetics',
+    (n_hpo_phenotypes >= 10), any_approved FROM ti_pool WHERE n_hpo_phenotypes IS NOT NULL
   UNION ALL SELECT 'B. Tractable — small mol', 'B_mechanistic',
     (tractability_sm IS TRUE), any_approved FROM ti_pool WHERE tractability_sm IS NOT NULL
   UNION ALL SELECT 'B. Tractable — antibody', 'B_mechanistic',
@@ -78,8 +80,6 @@ tests AS (
     (ot_animal_model_max >= 0.3), any_approved FROM ti_pool WHERE ot_animal_model_max IS NOT NULL
   UNION ALL SELECT 'D. IMPC ≥3 phenotypes', 'D_animal',
     (impc_n_phenotypes >= 3), any_approved FROM ti_pool WHERE impc_n_phenotypes IS NOT NULL
-  UNION ALL SELECT 'D. HPO ≥10 phenotypes', 'D_animal',
-    (n_hpo_phenotypes >= 10), any_approved FROM ti_pool WHERE n_hpo_phenotypes IS NOT NULL
   UNION ALL SELECT 'E. Line E lit high (≥2)', 'E_pd',
     (line_e_lit >= 2), any_approved FROM ti_pool WHERE line_e_lit IS NOT NULL
   UNION ALL SELECT 'H. gnomAD pLI ≥0.9', 'H_safety',

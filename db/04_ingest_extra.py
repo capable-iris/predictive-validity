@@ -70,9 +70,9 @@ NEW_DIMENSIONS = [
     ("n_suggestive_diseases", "I_landscape", "target", "count",
      "Number of diseases with suggestive evidence",
      "target_pleiotropy", None),
-    # Category D/H — phenotype pleiotropy
-    ("n_hpo_phenotypes", "D_animal", "target", "count",
-     "Human Phenotype Ontology terms linked to gene mutations",
+    # Category A — target-level human genetic phenotype breadth
+    ("n_hpo_phenotypes", "A_genetics", "target", "count",
+     "Distinct Human Phenotype Ontology terms linked to human gene-disease annotations; target-level and indication-agnostic",
      "gene_phenotypes", None),
     # Category A — Open Targets granular
     ("ot_l2g_score_max", "A_genetics", "target", "numeric_float",
@@ -111,7 +111,7 @@ INGEST_QUERIES = [
      "SELECT target_id, n_causal_diseases FROM public.target_pleiotropy WHERE n_causal_diseases IS NOT NULL"),
     ("n_suggestive_diseases", "I_landscape", "target", "value_numeric",
      "SELECT target_id, n_suggestive_diseases FROM public.target_pleiotropy WHERE n_suggestive_diseases IS NOT NULL"),
-    ("n_hpo_phenotypes", "D_animal", "target", "value_numeric",
+    ("n_hpo_phenotypes", "A_genetics", "target", "value_numeric",
      "SELECT target_id, count(DISTINCT hpo_id) FROM public.gene_phenotypes GROUP BY target_id"),
     ("ot_l2g_score_max", "A_genetics", "target", "value_numeric",
      "SELECT target_id, MAX(l2g_score) FROM public.target_evidence WHERE l2g_score IS NOT NULL GROUP BY target_id"),
@@ -140,6 +140,7 @@ def main():
               (dimension, category, subject_type, data_type, description, source_primary)
             VALUES (%s, %s, %s, %s, %s, %s)
             ON CONFLICT (dimension) DO UPDATE SET
+              category = EXCLUDED.category,
               description = EXCLUDED.description,
               source_primary = EXCLUDED.source_primary
         """, (dim, cat, subj, dtype, desc, source))
@@ -190,6 +191,7 @@ def main():
                 VALUES %s
                 ON CONFLICT (subject_type, subject_id, subject_id2, dimension, source, source_version)
                 DO UPDATE SET
+                  category = EXCLUDED.category,
                   value_numeric = EXCLUDED.value_numeric,
                   value_text = EXCLUDED.value_text,
                   value_boolean = EXCLUDED.value_boolean,
@@ -232,7 +234,10 @@ def main():
                confidence, citation_pmids, extracted_by)
             VALUES %s
             ON CONFLICT (subject_type, subject_id, subject_id2, dimension, source, source_version)
-            DO UPDATE SET value_boolean = EXCLUDED.value_boolean, extracted_at = now()
+            DO UPDATE SET
+              category = EXCLUDED.category,
+              value_boolean = EXCLUDED.value_boolean,
+              extracted_at = now()
         """, insert_rows, page_size=2000)
     conn.commit()
     print(f"{len(insert_rows)} rows")

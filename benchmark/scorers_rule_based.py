@@ -251,6 +251,7 @@ RS_WEIGHTS = {
     ("A_genetics", "mendelian_n", 5, "gte", 0.42),                # RS 1.53
     ("A_genetics", "ot_genetic_max", 0.3, "gte", 0.29),           # RS 1.34
     ("A_genetics", "ot_somatic_score_max", 0.3, "gte", 0.49),     # RS 1.63
+    ("A_genetics", "n_hpo_phenotypes", 10, "gte", -0.37),         # RS 0.69 (pleiotropy neg)
     ("B_mechanistic", "tractability_sm", True, "eq", 0.12),
     ("B_mechanistic", "tractability_ab", True, "eq", 0.14),
     ("B_mechanistic", "n_reactome_pathways", 5, "gte", 1.03),     # RS 2.81 (strongest)
@@ -261,7 +262,6 @@ RS_WEIGHTS = {
     ("D_animal", "line_d_lit", 2, "gte", 0.39),                   # RS 1.47
     ("D_animal", "ot_animal_model_max", 0.3, "gte", 0.25),        # RS 1.28
     ("D_animal", "impc_n_phenotypes", 3, "gte", 0.30),
-    ("D_animal", "n_hpo_phenotypes", 10, "gte", -0.37),           # RS 0.69 (pleiotropy neg)
     ("E_pd", "line_e_lit", 2, "gte", 0.78),                       # RS 2.18 (top signal)
     ("H_safety", "gnomad_pli", 0.9, "gte", -0.25),                # RS 0.78
     ("H_safety", "gnomad_loeuf", 0.35, "lt", -0.30),              # RS 0.74
@@ -369,7 +369,7 @@ if __name__ == "__main__":
     demo = {
         "A_genetics": {"nelson_tier": None, "mendelian_n": 2, "clingen_n_strong": 0,
                        "gwas_n_sig": 93, "ot_genetic_max": 0.28, "ot_somatic_score_max": 0.15,
-                       "ot_is_mendelian_any": False},
+                       "ot_is_mendelian_any": False, "n_hpo_phenotypes": 7},
         "B_mechanistic": {"tractability_sm": True, "tractability_ab": False,
                           "tau_specificity": 0.778, "sc_tau_specificity": 0.919,
                           "n_ppi_partners": 8, "n_reactome_pathways": 5,
@@ -377,7 +377,7 @@ if __name__ == "__main__":
         "C_cell": {"line_c_lit": None, "depmap_pan_essential": False,
                    "depmap_n_dep_lineages": 0},
         "D_animal": {"line_d_lit": None, "impc_n_phenotypes": 3,
-                     "ot_animal_model_max": 0.43, "n_hpo_phenotypes": 7},
+                     "ot_animal_model_max": 0.43},
         "E_pd": {"line_e_lit": None},
         "H_safety": {"gnomad_pli": 1.0, "gnomad_loeuf": 0.338},
         "I_landscape": {"n_causal_diseases": 0, "n_dgidb_drugs": 0,

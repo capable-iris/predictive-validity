@@ -1,6 +1,7 @@
-"""Leave-one-category-out ablation on STRICT outcome.
+"""Leave-one-category-out ablation on the strict outcome.
 
-Using LogReg (the top performer on strict) instead of LightGBM.
+This preserves the historical ablation method: shuffled, stratified 5-fold CV
+with seed 42. Held-out-target validation is intentionally a separate change.
 """
 
 import os
@@ -16,9 +17,51 @@ _runner = import_module("runner")
 _ml = import_module("scorers_ml")
 _robust = import_module("scorers_ml")
 _stack = import_module("scorers_ensemble")
-_ablate = import_module("ablation")
 
 DB_URL = os.environ["DATABASE_URL"]
+
+CATEGORIES = ["A_genetics", "B_mechanistic", "C_cell", "D_animal",
+              "E_pd", "H_safety", "I_landscape", "context"]
+
+
+def category_for_feature(name, category_map=None):
+    """Return the reporting category for a model feature."""
+    category_map = category_map or _ml.FEATURE_CATEGORIES
+    if name.startswith("nelson_"):
+        return "A_genetics"
+    if name.startswith("ta_"):
+        return "context"
+    return category_map.get(name)
+
+
+def mask_category(X, category, category_map=None):
+    """Mask one evidence category without changing feature order."""
+    masked = X.copy()
+    for index, name in enumerate(_ml.FEATURE_NAMES):
+        if category_for_feature(name, category_map) == category:
+            masked[:, index] = np.nan
+    return masked
+
+
+def stratified_predictions(X, y, n_splits=5):
+    """Historical ablation CV: shuffled StratifiedKFold with seed 42."""
+    predictions, _ = _ml.cv_predict(
+        _stack.make_logreg_l2, X, y, n_splits=n_splits, seed=42
+    )
+    return predictions
+
+
+def evaluate_ablation(X, y, category_map=None):
+    """Return full and leave-one-category-out AUCs on identical folds."""
+    full_predictions = stratified_predictions(X, y)
+    full_auc = _runner.auc_roc(y.tolist(), full_predictions.tolist())
+    results = []
+    for category in CATEGORIES:
+        masked = mask_category(X, category, category_map)
+        predictions = stratified_predictions(masked, y)
+        auc = _runner.auc_roc(y.tolist(), predictions.tolist())
+        results.append((category, auc, auc - full_auc))
+    return full_auc, results
 
 
 def main():
@@ -28,35 +71,15 @@ def main():
     X_log = _stack.log_transform_features(X, _ml.FEATURE_NAMES)
     print(f"Cohort: {len(rows)}, positive: {y.mean():.4f}")
 
-    # Full model
-    oof_full = _robust.cv_predict_strict(_stack.make_logreg_l2, X_log, y, n_splits=5)
-    auc_full = _runner.auc_roc(y.tolist(), oof_full.tolist())
+    auc_full, results = evaluate_ablation(X_log, y)
     print(f"\nFull LogReg model AUC (strict): {auc_full:.3f}")
 
-    categories = ["A_genetics", "B_mechanistic", "C_cell", "D_animal",
-                  "E_pd", "H_safety", "I_landscape", "context"]
-
-    print("\nLeave-one-category-out (LogReg, strict):")
+    print("\nLeave-one-category-out (LogReg, stratified 5-fold, strict):")
     print(f"{'Category':<16} {'AUC':<8} {'ΔAUC':<10}")
     print("-" * 40)
 
-    results = []
-    for cat in categories:
-        X_ab = X_log.copy()
-        for i, name in enumerate(_ml.FEATURE_NAMES):
-            cat_check = _ablate.CATEGORY_MAP.get(name)
-            if name.startswith("nelson_"):
-                cat_check = "A_genetics"
-            elif name.startswith("ta_"):
-                cat_check = "context"
-            if cat_check == cat:
-                X_ab[:, i] = np.nan
-        oof_ab = _robust.cv_predict_strict(_stack.make_logreg_l2, X_ab, y)
-        auc_ab = _runner.auc_roc(y.tolist(), oof_ab.tolist())
-        delta = auc_ab - auc_full
+    for cat, auc_ab, delta in results:
         print(f"{cat:<16} {auc_ab:.3f}   {delta:+.4f}")
-        results.append((cat, auc_ab, delta))
-
         # Store
         conn = psycopg2.connect(DB_URL)
         with conn.cursor() as cur:
@@ -65,10 +88,11 @@ def main():
                   (scoring_function, scoring_version, cohort_definition,
                    n_ti_pairs, n_approved, n_failed, auc_roc, notes)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (f"logreg_strict_ablate_no_{cat}", "v3_strict",
+            """, (f"logreg_strict_ablate_no_{cat}_hpo_category", "hpo_category_v1",
                   "ti_phase2plus_strict", len(rows), int(y.sum()),
                   int(len(y) - y.sum()), auc_ab,
-                  f"Ablate {cat}, strict outcome, LogReg. Full AUC={auc_full:.3f}, delta={delta:+.4f}"))
+                  f"Ablate {cat}, strict outcome, LogReg, shuffled StratifiedKFold(seed=42). "
+                  f"Full AUC={auc_full:.3f}, delta={delta:+.4f}"))
             conn.commit()
         conn.close()
 
