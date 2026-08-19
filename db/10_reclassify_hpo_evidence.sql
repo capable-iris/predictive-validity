@@ -1,8 +1,9 @@
 -- Reclassify n_hpo_phenotypes from animal evidence to human genetics.
 --
 -- public.gene_phenotypes contains human gene-to-HPO annotations associated
--- with OMIM and ORPHA disease identifiers. This migration changes taxonomy
--- metadata only: it deliberately leaves the stored feature values unchanged.
+-- with OMIM and ORPHA disease identifiers. Mode-of-inheritance terms describe
+-- transmission rather than phenotypic abnormalities, so they are excluded
+-- from the phenotype-breadth count.
 
 BEGIN;
 
@@ -20,13 +21,32 @@ $$;
 
 UPDATE preclin.evidence_dimension
 SET category = 'A_genetics',
-    description = 'Distinct Human Phenotype Ontology terms linked to human gene-disease annotations; target-level and indication-agnostic'
+    description = 'Distinct Human Phenotype Ontology terms linked to human gene-disease annotations; target-level, indication-agnostic, and excludes mode-of-inheritance terms'
 WHERE dimension = 'n_hpo_phenotypes';
 
 UPDATE preclin.evidence_score
 SET category = 'A_genetics'
 WHERE dimension = 'n_hpo_phenotypes'
   AND category IS DISTINCT FROM 'A_genetics';
+
+WITH phenotype_counts AS (
+  SELECT gp.target_id,
+         count(DISTINCT gp.hpo_id) FILTER (
+           WHERE p.name IS NULL OR p.name NOT ILIKE '%inheritance%'
+         )::double precision AS n_hpo_phenotypes
+  FROM public.gene_phenotypes gp
+  LEFT JOIN public.phenotypes p USING (hpo_id)
+  GROUP BY gp.target_id
+)
+UPDATE preclin.evidence_score es
+SET value_numeric = pc.n_hpo_phenotypes,
+    extracted_at = now()
+FROM phenotype_counts pc
+WHERE es.subject_type = 'target'
+  AND es.subject_id = pc.target_id
+  AND es.dimension = 'n_hpo_phenotypes'
+  AND es.source = 'genome_browser_derived'
+  AND es.value_numeric IS DISTINCT FROM pc.n_hpo_phenotypes;
 
 -- Preserve the deployed definitions of these potentially expensive views and
 -- change only the HPO label/category literals. This avoids replacing
@@ -89,8 +109,25 @@ BEGIN
     FROM preclin.evidence_score
     WHERE dimension = 'n_hpo_phenotypes'
       AND category IS DISTINCT FROM 'A_genetics'
+  ) OR EXISTS (
+    WITH phenotype_counts AS (
+      SELECT gp.target_id,
+             count(DISTINCT gp.hpo_id) FILTER (
+               WHERE p.name IS NULL OR p.name NOT ILIKE '%inheritance%'
+             )::double precision AS n_hpo_phenotypes
+      FROM public.gene_phenotypes gp
+      LEFT JOIN public.phenotypes p USING (hpo_id)
+      GROUP BY gp.target_id
+    )
+    SELECT 1
+    FROM preclin.evidence_score es
+    JOIN phenotype_counts pc ON pc.target_id = es.subject_id
+    WHERE es.subject_type = 'target'
+      AND es.dimension = 'n_hpo_phenotypes'
+      AND es.source = 'genome_browser_derived'
+      AND es.value_numeric IS DISTINCT FROM pc.n_hpo_phenotypes
   ) THEN
-    RAISE EXCEPTION 'n_hpo_phenotypes category migration did not reach its postcondition';
+    RAISE EXCEPTION 'n_hpo_phenotypes migration did not reach its postcondition';
   END IF;
 END
 $$;

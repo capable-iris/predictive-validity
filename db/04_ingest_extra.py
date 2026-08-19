@@ -72,7 +72,7 @@ NEW_DIMENSIONS = [
      "target_pleiotropy", None),
     # Category A — target-level human genetic phenotype breadth
     ("n_hpo_phenotypes", "A_genetics", "target", "count",
-     "Distinct Human Phenotype Ontology terms linked to human gene-disease annotations; target-level and indication-agnostic",
+     "Distinct Human Phenotype Ontology terms linked to human gene-disease annotations; target-level, indication-agnostic, and excludes mode-of-inheritance terms",
      "gene_phenotypes", None),
     # Category A — Open Targets granular
     ("ot_l2g_score_max", "A_genetics", "target", "numeric_float",
@@ -112,7 +112,13 @@ INGEST_QUERIES = [
     ("n_suggestive_diseases", "I_landscape", "target", "value_numeric",
      "SELECT target_id, n_suggestive_diseases FROM public.target_pleiotropy WHERE n_suggestive_diseases IS NOT NULL"),
     ("n_hpo_phenotypes", "A_genetics", "target", "value_numeric",
-     "SELECT target_id, count(DISTINCT hpo_id) FROM public.gene_phenotypes GROUP BY target_id"),
+     """SELECT gp.target_id,
+               count(DISTINCT gp.hpo_id) FILTER (
+                 WHERE p.name IS NULL OR p.name NOT ILIKE '%inheritance%'
+               )
+          FROM public.gene_phenotypes gp
+          LEFT JOIN public.phenotypes p USING (hpo_id)
+         GROUP BY gp.target_id"""),
     ("ot_l2g_score_max", "A_genetics", "target", "value_numeric",
      "SELECT target_id, MAX(l2g_score) FROM public.target_evidence WHERE l2g_score IS NOT NULL GROUP BY target_id"),
     ("ot_somatic_score_max", "A_genetics", "target", "value_numeric",
