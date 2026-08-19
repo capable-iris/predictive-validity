@@ -46,13 +46,24 @@ def mask_category(X, category, category_map=None):
 
 def held_out_target_predictions(X, y, groups, n_splits=5):
     """Return OOF predictions with every target confined to one fold."""
-    splitter = GroupKFold(n_splits=n_splits)
     predictions = np.zeros(len(y), dtype=np.float64)
-    for train_index, test_index in splitter.split(X, y, groups=groups):
+    for train_index, test_index in held_out_target_splits(X, y, groups, n_splits):
         model = _stack.make_logreg_l2()
         model.fit(X[train_index], y[train_index])
         predictions[test_index] = model.predict_proba(X[test_index])[:, 1]
     return predictions
+
+
+def held_out_target_splits(X, y, groups, n_splits=5):
+    """Yield folds and enforce the held-out-target disjointness invariant."""
+    splitter = GroupKFold(n_splits=n_splits)
+    for train_index, test_index in splitter.split(X, y, groups=groups):
+        overlap = np.intersect1d(groups[train_index], groups[test_index])
+        if overlap.size:
+            raise RuntimeError(
+                f"held-out-target split leaked {overlap.size} target groups"
+            )
+        yield train_index, test_index
 
 
 def evaluate_ablation(X, y, groups, category_map=None):
