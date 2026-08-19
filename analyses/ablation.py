@@ -1,7 +1,7 @@
 """Leave-one-category-out ablation on the strict outcome.
 
-This preserves the historical ablation method: shuffled, stratified 5-fold CV
-with seed 42. Held-out-target validation is intentionally a separate change.
+Uses held-out-target 5-fold CV so target-indication pairs sharing a target never
+appear in both training and test data.
 """
 
 import os
@@ -9,6 +9,7 @@ import sys
 import numpy as np
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from sklearn.model_selection import GroupKFold
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'benchmark'))
@@ -43,22 +44,25 @@ def mask_category(X, category, category_map=None):
     return masked
 
 
-def stratified_predictions(X, y, n_splits=5):
-    """Historical ablation CV: shuffled StratifiedKFold with seed 42."""
-    predictions, _ = _ml.cv_predict(
-        _stack.make_logreg_l2, X, y, n_splits=n_splits, seed=42
-    )
+def held_out_target_predictions(X, y, groups, n_splits=5):
+    """Return OOF predictions with every target confined to one fold."""
+    splitter = GroupKFold(n_splits=n_splits)
+    predictions = np.zeros(len(y), dtype=np.float64)
+    for train_index, test_index in splitter.split(X, y, groups=groups):
+        model = _stack.make_logreg_l2()
+        model.fit(X[train_index], y[train_index])
+        predictions[test_index] = model.predict_proba(X[test_index])[:, 1]
     return predictions
 
 
-def evaluate_ablation(X, y, category_map=None):
+def evaluate_ablation(X, y, groups, category_map=None):
     """Return full and leave-one-category-out AUCs on identical folds."""
-    full_predictions = stratified_predictions(X, y)
+    full_predictions = held_out_target_predictions(X, y, groups)
     full_auc = _runner.auc_roc(y.tolist(), full_predictions.tolist())
     results = []
     for category in CATEGORIES:
         masked = mask_category(X, category, category_map)
-        predictions = stratified_predictions(masked, y)
+        predictions = held_out_target_predictions(masked, y, groups)
         auc = _runner.auc_roc(y.tolist(), predictions.tolist())
         results.append((category, auc, auc - full_auc))
     return full_auc, results
@@ -68,13 +72,14 @@ def main():
     rows = _robust.load_strict()
     X = np.stack([_ml.row_to_feature_vector(r) for r in rows])
     y = np.array([1 if r["y_strict"] else 0 for r in rows], dtype=np.int64)
+    groups = np.array([r["target_id"] for r in rows], dtype=np.int64)
     X_log = _stack.log_transform_features(X, _ml.FEATURE_NAMES)
-    print(f"Cohort: {len(rows)}, positive: {y.mean():.4f}")
+    print(f"Cohort: {len(rows)}, targets: {len(set(groups))}, positive: {y.mean():.4f}")
 
-    auc_full, results = evaluate_ablation(X_log, y)
+    auc_full, results = evaluate_ablation(X_log, y, groups)
     print(f"\nFull LogReg model AUC (strict): {auc_full:.3f}")
 
-    print("\nLeave-one-category-out (LogReg, stratified 5-fold, strict):")
+    print("\nLeave-one-category-out (LogReg, GroupKFold(target), strict):")
     print(f"{'Category':<16} {'AUC':<8} {'ΔAUC':<10}")
     print("-" * 40)
 
@@ -88,10 +93,10 @@ def main():
                   (scoring_function, scoring_version, cohort_definition,
                    n_ti_pairs, n_approved, n_failed, auc_roc, notes)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (f"logreg_strict_ablate_no_{cat}_hpo_category", "hpo_category_v1",
-                  "ti_phase2plus_strict", len(rows), int(y.sum()),
+            """, (f"logreg_strict_ablate_no_{cat}_holdout_target", "holdout_target_v1",
+                  "ti_phase2plus_strict_holdout_target", len(rows), int(y.sum()),
                   int(len(y) - y.sum()), auc_ab,
-                  f"Ablate {cat}, strict outcome, LogReg, shuffled StratifiedKFold(seed=42). "
+                  f"Ablate {cat}, strict outcome, LogReg, GroupKFold(target_id). "
                   f"Full AUC={auc_full:.3f}, delta={delta:+.4f}"))
             conn.commit()
         conn.close()
