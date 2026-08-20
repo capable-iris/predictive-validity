@@ -49,6 +49,9 @@ Methodology, data pulls, code, and validation are in `METHODOLOGY.md`. Full anal
 
 **39% of approved drugs have strong human genetic backing** (matched Mendelian or GWAS-coding).
 
+These percentages describe the hand-curated set of 544 approved drugs only.
+They are not cohort-wide tier coverage and are not used as predictive inputs.
+
 ---
 
 ## 2. What kinds of preclinical evidence predict approval?
@@ -239,7 +242,7 @@ Full analysis in `RESULTS.md`; spec in `../PRECLINICAL_EVIDENCE_SPEC.md`. Compre
 **Null predictors** (target-level literature): Line C/D lit scores (OR ≈1), IMPC KO count, tractability flags. Publication bias saturates target-level signals.
 
 **Key inversions:**
-- **Nelson tier T1+ pooled OR 0.53** reflects TA confounding: T0-approved drugs are dominated by cytotoxic oncology, checkpoint inhibitors, anti-infectives — categories with no human disease genetics. Within a specific TA, genetics still helps (§3).
+- The historical pooled Nelson-tier odds ratio is retired: tier coverage was selectively curated on approval-oriented pairs, so it cannot support a predictive comparison.
 - **OT animal model score ≥0.3 pooled OR 0.38** — well-studied mouse-KO targets are less likely approved. Pleiotropy signal.
 
 **Q4/Q5 headlines** (see `RESULTS.md` for full tables):
@@ -259,4 +262,3 @@ Full analysis in `RESULTS.md`; spec in `../PRECLINICAL_EVIDENCE_SPEC.md`. Compre
 - **Non-scientific factors** (sponsor capital, patent cliff, advocacy pressure) not modeled.
 
 ---
-

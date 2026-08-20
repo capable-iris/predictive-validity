@@ -7,7 +7,9 @@ Evaluates any target-scoring model against historical `(target × indication)` F
 **Given:** a (target × indication) pair and 40+ dimensions of preclinical evidence.
 **Predict:** P(any drug on this T-I gets FDA-approved for THIS indication) — strict per-indication outcome.
 **Ground truth:** `preclin.v_target_indication_strict_outcome.strict_approved_this_ti`.
-**Cohort:** T-I pairs where ≥1 program reached Phase 1+ (n=13,639) or Phase 2+ (n=8,035).
+**Cohort:** T-I pairs where ≥1 program reached Phase 1+ (n=13,821) or Phase 2+ (n=8,130).
+
+`nelson_tier` is temporarily excluded from every predictive scorer because its selectively curated coverage is outcome-associated. Stored tiers remain available for audit and descriptive analysis only. Reintroduction requires uniform, indication-specific, pre-outcome computation and held-out-target validation.
 
 ## Scorer registry
 
@@ -29,7 +31,7 @@ Registered scorers:
 
 | File | Scorer names | Method |
 |---|---|---|
-| `scorers_rule_based.py` | random_v1, family_precedent_v1, nelson_only_v1, genetic_only_v1, rs_composite_v1 | Hand-weighted rule-based |
+| `scorers_rule_based.py` | random_v1, family_precedent_v1, genetic_only_v1, rs_composite_v1 | Hand-weighted rule-based |
 | `scorers_ml.py` | logreg_strict_v1, lightgbm_robust_strict_v1, randomforest_strict_v1 | Trained ML, 5-fold CV |
 | `scorers_ensemble.py` | stacked_v1 | LogReg meta-learner over base models |
 | `scorers_pheiron.py` | pheiron_rs_composite_v1 | Untrained published Pheiron RS |
@@ -73,12 +75,11 @@ The CSV snapshot at `../data/leaderboard.csv` mirrors this at commit time.
 
 ## Best scorer
 
-For predicting FDA approval on strict per-indication outcome, **held-out target 5-fold CV, Phase 1+ cohort n=13,639**:
+For predicting FDA approval on strict per-indication outcome, **held-out target 5-fold CV, Phase 1+ cohort n=13,821**:
 
-1. `stacked_final_v1` — AUC 0.825 (best overall)
-2. `logreg_final_v1` — AUC 0.822 (best interpretable)
-3. `pheiron_rs_composite_v1` (untrained) — AUC 0.615 (rule-based ceiling)
-4. `sonnet_agent_sdk_v1` — AUC 0.633 (LLM ceiling on 200 sampled T-Is)
-5. `random_v1` — AUC 0.500
+1. `stacked_final_no_nelson_v1` — AUC 0.653 (best overall)
+2. `logreg_final_no_nelson_v1` — AUC 0.643 (best interpretable)
+
+Historical rule-based and LLM results were not regenerated after the exclusion and are not presented as current comparisons.
 
 Full comparison: [`../RESULTS.md`](../RESULTS.md).

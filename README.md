@@ -12,11 +12,13 @@
 - **T-I pair**: a specific `(target_gene, indication)` combination. Example: `(EGFR, non-small cell lung cancer)`.
 - **Target-matched**: at least one drug developed against this T-I has a resolvable primary target in genome-browser's target catalog. Excludes: placebos, vaccines, cell therapies without a molecular target, unresolved compound codes.
 - **Phase 1+**: at least one drug program targeting this T-I entered a clinical trial. Excludes preclinical-only hypotheses.
-- **Result: 13,639 T-I pairs, base rate 2.95%** (403 approved).
+- **Result: 13,821 T-I pairs, base rate 2.92%** (404 approved).
 
 **Ground truth ("strict per-indication outcome"):** was any drug hitting this target ever FDA-approved *specifically for this indication*? Not "approved for anything" — that would count e.g. EGFR-approved-for-lung as a positive for `(EGFR, colorectal)`. Strict outcome only counts approval on the exact indication.
 
-**Evidence dimensions (features):** 40+ per target/T-I. Categories: A. Human genetics (Nelson tier, ClinGen, Mendelian, GWAS, positively observed terms in the HPO Phenotypic abnormality branch, Open Targets), B. Mechanistic (tractability, tissue Tau, Reactome, PPI, GO), C. Cell (DepMap essentiality, cell literature), D. Animal (IMPC KO phenotypes, Open Targets animal model), E. Human PD engagement (literature score), H. Safety (gnomAD pLI/LOEUF), I. Landscape (family precedent, DGIdb).
+**Evidence dimensions (features):** 40+ per target/T-I. Categories: A. Human genetics (ClinGen, Mendelian, GWAS, positively observed terms in the HPO Phenotypic abnormality branch, Open Targets), B. Mechanistic (tractability, tissue Tau, Reactome, PPI, GO), C. Cell (DepMap essentiality, cell literature), D. Animal (IMPC KO phenotypes, Open Targets animal model), E. Human PD engagement (literature score), H. Safety (gnomAD pLI/LOEUF), I. Landscape (family precedent, DGIdb).
+
+**Temporary Nelson-tier exclusion:** `nelson_tier` remains stored for audit and descriptive analysis but is excluded from every predictive model. Its selectively curated coverage is strongly associated with approval status. It may be reconsidered only after uniform, indication-specific, pre-outcome computation across the cohort and held-out-target validation.
 
 **Evaluation:** 5-fold GroupKFold on `target_id` — no target appears in both train and test folds. Tests whether the model has learned generalizable biology or is memorizing target-specific shortcuts.
 
@@ -24,10 +26,10 @@
 
 | Metric | Value |
 |---|---|
-| **AUC** | **0.825 [0.797, 0.849]** |
-| **RS(top 10%)** | **13.67** (top decile enriched 13.7× for approvals) |
-| Recall @ top 10% | 0.60 (top-scored 10% captures 60% of all approvals) |
-| ECE | 0.013 (well-calibrated) |
+| **AUC** | **0.653 [0.622, 0.680]** |
+| **RS(top 10%)** | **3.12** |
+| Recall @ top 10% | 0.257 |
+| ECE | 0.001 |
 
 Best model: stacked ensemble (LogReg + regularized LightGBM + RandomForest).
 
@@ -35,18 +37,18 @@ Comparison:
 
 | Method | AUC | Gap vs best |
 |---|---|---|
-| Stacked ensemble (trained on our data) | **0.825** | — |
-| Untrained Pheiron RS composite | 0.615 | −21pp |
-| Sonnet LLM agent (reads evidence dossier) | 0.633 | −19pp |
-| Random baseline | 0.500 | −33pp |
+| Stacked ensemble | **0.653** | — |
+| LogReg L2 | 0.643 | −1.0pp |
 
-**Trained ML extracts substantially more signal than published rule-based methodology or LLM reasoning.**
+Older rule-based and LLM comparisons in `data/leaderboard.csv` predate the Nelson exclusion and are retained only as historical run records; they are not directly comparable to this regenerated result.
+
+On the same corrected Phase 1+ cohort and held-out-target split, excluding Nelson reduced stacked AUC from 0.821 to 0.653. This confirms that the previous headline was substantially driven by annotation-selection leakage and supersedes it.
 
 Full leaderboard + robustness + pathway wrongness: **[`RESULTS.md`](RESULTS.md)**.
 
 ## Key finding
 
-**Genetic evidence alone accounts for ~18pp of the model's AUC.** Removing all genetics features drops the model from 0.829 to 0.651. Removing target-level cell or animal literature drops AUC by exactly 0.0pp — a clean measurement of publication-bias saturation on target-level literature scores.
+On the Phase 2+ held-out-target ablation, removing human PD evidence reduces LogReg AUC by 2.5pp, removing genetics reduces it by 1.9pp, and removing mechanistic evidence reduces it by 1.3pp. Removing target-level cell or animal evidence slightly improves AUC, so neither shows positive marginal signal in the corrected model.
 
 Corollary from the pathway-wrongness analysis: even at Phase 3 with strong genetic + cell + animal + PD evidence all high, **~78% of drug programs still fail**. Preclinical biology confirms the drug's mechanism works; it doesn't confirm the mechanism drives the clinical endpoint.
 
@@ -62,8 +64,8 @@ pip install psycopg2-binary scikit-learn numpy lightgbm anthropic
 # Explore live leaderboard
 psql "$DATABASE_URL" -c "SELECT * FROM preclin.v_benchmark_leaderboard"
 
-# Reproduce the headline AUC 0.825 (~5 min)
-python3 analyses/final_benchmark.py
+# Reproduce the headline AUC 0.653 (~5 min)
+.venv/bin/dotenv run -- .venv/bin/python analyses/final_benchmark.py
 ```
 
 ## Repo structure
@@ -80,7 +82,7 @@ predictive-validity/
 ├── analyses/            Reproducible analysis scripts (ablation, time-machine, etc.)
 │   └── classifiers/     LLM classifiers that produce incrementally ingested audit JSONL
 │                        (target-lit scorer, why-stopped classifier, silent-kill verify,
-│                         Nelson tier assignment) — see analyses/classifiers/README.md
+│                         Nelson tier assignment for descriptive/audit use only)
 ```
 
 ## How to plug in your own model
@@ -93,23 +95,20 @@ Either way, results appear in `preclin.v_benchmark_leaderboard`.
 
 ## What we CAN claim (with statistical support)
 
-1. Public preclinical evidence predicts strict per-T-I FDA approval at **AUC 0.825** on Phase 1+ target-matched cohort, held-out-target CV.
-2. **Top-decile predictions are 13.7× enriched** for approvals.
-3. Model is well-calibrated (**ECE 0.013**).
-4. **Human genetic evidence is dominant** (17.7pp of AUC).
-5. **Target-level cell + animal literature contribute zero marginal signal** on top of genetics + safety.
-6. Model **generalizes to unseen targets** (2pp drop between random-split and held-out-target).
-7. Model **generalizes out-of-time** (LogReg trained pre-2019 predicts 2019+ outcomes at AUC 0.77, RS 12.3).
-8. **Trained ML beats published rule-based methodology by 21pp AUC** and beats LLM-agent scoring by 19pp.
+1. Public preclinical evidence predicts strict per-T-I FDA approval at **AUC 0.653** on the Phase 1+ target-matched cohort with held-out-target CV.
+2. Top-decile predictions are **3.12× enriched** for approvals.
+3. The stacked model is well calibrated on this cohort (**ECE 0.001**).
+4. Human PD, genetics, and mechanistic evidence provide modest positive marginal signal in the Phase 2+ LogReg ablation.
+5. Target-level cell and animal evidence provide no positive marginal signal in that ablation.
 
 ## What we CANNOT claim
 
-- Absolute `p_approval` values are cohort-scoped (base rate 2.95% in our cohort; not comparable to a random drug in the world).
+- Absolute `p_approval` values are cohort-scoped (base rate 2.92% in our cohort; not comparable to a random drug in the world).
 - Non-CT.gov trials (EU-CTR, ChiCTR) ≈ 20% of global drug development activity — not ingested.
 - Preclinical / IND-stage kills invisible (never enter CT.gov).
-- Feature values are current-day for reference dimensions (Nelson tier, gnomAD, ClinGen); only trial-precedent features are time-cutoff-aware.
+- Feature values are current-day for reference dimensions such as gnomAD and ClinGen; only trial-precedent features are time-cutoff-aware. `nelson_tier` is excluded from predictive models.
 
-Full caveats: [`RESULTS.md#robustness—12-attacks`](RESULTS.md).
+Full caveats: [`RESULTS.md#robustness-and-limitations`](RESULTS.md#robustness-and-limitations).
 
 ## License
 

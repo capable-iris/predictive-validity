@@ -32,11 +32,7 @@ COHORT_SQL = """
       s.n_programs, s.n_sponsors, s.outcomes_broad_all,
       t.symbol AS target_symbol, i.display_name AS indication_name,
       i.therapeutic_area,
-      tw.*,
-      (SELECT value_text FROM preclin.evidence_score
-        WHERE subject_type='target_indication' AND subject_id = s.target_id
-          AND subject_id2 = s.indication_id AND dimension = 'nelson_tier'
-        LIMIT 1) AS nelson_tier
+      tw.*
     FROM preclin.v_target_indication_strict_outcome s
     JOIN public.targets t ON t.id = s.target_id
     JOIN preclin.indication i ON i.indication_id = s.indication_id
@@ -83,8 +79,6 @@ def row_to_features_strict(row, precedent_dict):
     for f in _ml.BOOL_FEATURES:
         v = row.get(f)
         feats.append(np.nan if v is None else (1.0 if v else 0.0))
-    for t in _ml.NELSON_TIERS:
-        feats.append(1.0 if row.get("nelson_tier") == t else 0.0)
     for a in _ml.THERAPEUTIC_AREAS:
         feats.append(1.0 if (row.get("therapeutic_area") or "other") == a else 0.0)
     return np.array(feats, dtype=np.float64)

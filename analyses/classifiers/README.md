@@ -28,6 +28,12 @@ export DATABASE_URL=postgres://...
 | `classify_silent_kill.py` | Ph3+ silent-kill verification per drug | `data/silent_kill_verified.jsonl` | Sonnet | ~$50-150 |
 | `nelson_tier_classify.py` | T-I Nelson tier assignment | `data/target_evidence/nelson_tiers_batch_YYYYMMDD.csv` | Sonnet | ~$50 |
 
+`nelson_tier` is retained for audit and descriptive analysis but is temporarily
+excluded from all predictive scorers because existing coverage was selectively
+curated on approval-oriented pairs. Do not run a bulk tiering job to restore it
+as a model feature: reintroduction requires uniform, indication-specific,
+pre-outcome computation and held-out-target validation.
+
 **Canonical cost field is `_cost_usd`.** Older classifier outputs used
 `_cost_share` (Sonnet why_stopped verify) or `_cost` (silent_kill,
 target_resolution). `db/02_ingest.py:_read_cost` accepts all three for

@@ -2,7 +2,7 @@
 
 This is our most stringent evaluation:
 - Strict outcome (approved for THIS indication)
-- Phase 1+ cohort (13,639 T-I pairs, no phase filter)
+- Phase 1+ cohort (no phase filter)
 - 5-fold GroupKFold on target_id (no target appears in both train and test)
 - Stacked ensemble with log-transformed features
 
@@ -11,7 +11,6 @@ If this holds up, it's the honest predictive-validity claim.
 
 import os
 import sys
-from datetime import date
 import numpy as np
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -21,7 +20,6 @@ from sklearn.linear_model import LogisticRegression
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'benchmark'))
 from importlib import import_module
-_runner = import_module("runner")
 _ml = import_module("scorers_ml")
 _robust = import_module("scorers_ml")
 _stack = import_module("scorers_ensemble")
@@ -75,20 +73,12 @@ def main():
     base = [_stack.make_logreg_l2, _robust.make_lgb_robust, _ml.make_rf]
     print(f"\n== Stacked (held-out-target GroupKFold, Phase 1+, strict) ==")
     oof = group_stacked_cv(X_log, y, groups, base)
-    y_list, p_list = y.tolist(), oof.tolist()
-    auc, auc_lo, auc_hi = _runner.bootstrap_metric(y_list, p_list, _runner.auc_roc)
-    brier = _runner.brier_score(y_list, p_list)
-    r10 = _runner.recall_at_top_k(y_list, p_list, 0.10)
-    p10 = _runner.precision_at_top_k(y_list, p_list, 0.10)
-    rs10 = _runner.rs_by_top_decile(y_list, p_list)
-    ece = _runner.calibration_ece(y_list, p_list)
-    print(f"  AUC = {auc:.3f} [{auc_lo:.3f}, {auc_hi:.3f}]")
-    print(f"  Brier = {brier:.3f}, R@10% = {r10:.3f}, P@10% = {p10:.3f}, RS10 = {rs10:.2f}, ECE = {ece:.3f}")
-
-    _robust.eval_and_store("stacked_final_v1", oof, y, rows,
-                            "ti_phase1plus_strict_holdout_target",
-                            "FINAL benchmark: Phase 1+ strict cohort, GroupKFold on target_id, "
-                            "stacked LogReg + robust-LGB + RF meta ensemble, log-transformed counts")
+    _robust.eval_and_store(
+        "stacked_final_no_nelson_v1", oof, y,
+        "ti_phase1plus_strict_holdout_target_no_nelson",
+        "Phase 1+ strict cohort, GroupKFold on target_id, stacked LogReg + "
+        "robust-LGB + RF meta ensemble, log-transformed counts; nelson_tier excluded",
+    )
 
     # LogReg alone with GroupKFold
     print(f"\n== LogReg alone (held-out-target GroupKFold, Phase 1+, strict) ==")
@@ -98,18 +88,12 @@ def main():
         model = _stack.make_logreg_l2()
         model.fit(X_log[tr], y[tr])
         oof2[te] = model.predict_proba(X_log[te])[:, 1]
-    y_list, p_list = y.tolist(), oof2.tolist()
-    auc, auc_lo, auc_hi = _runner.bootstrap_metric(y_list, p_list, _runner.auc_roc)
-    r10 = _runner.recall_at_top_k(y_list, p_list, 0.10)
-    p10 = _runner.precision_at_top_k(y_list, p_list, 0.10)
-    rs10 = _runner.rs_by_top_decile(y_list, p_list)
-    ece = _runner.calibration_ece(y_list, p_list)
-    print(f"  AUC = {auc:.3f} [{auc_lo:.3f}, {auc_hi:.3f}]")
-    print(f"  R@10% = {r10:.3f}, P@10% = {p10:.3f}, RS10 = {rs10:.2f}, ECE = {ece:.3f}")
-
-    _robust.eval_and_store("logreg_final_v1", oof2, y, rows,
-                            "ti_phase1plus_strict_holdout_target",
-                            "FINAL: LogReg L2, GroupKFold(target), Phase 1+ strict, log-transformed")
+    _robust.eval_and_store(
+        "logreg_final_no_nelson_v1", oof2, y,
+        "ti_phase1plus_strict_holdout_target_no_nelson",
+        "LogReg L2, GroupKFold(target), Phase 1+ strict, log-transformed; "
+        "nelson_tier excluded",
+    )
 
 
 if __name__ == "__main__":

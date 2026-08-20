@@ -1,0 +1,12 @@
+scope,model_or_ablation,validation,n_pairs,n_approved,n_targets,auc,auc_ci_lo,auc_ci_hi,brier,recall_at_10pct,precision_at_10pct,rs_top_decile,ece,delta_auc
+phase1plus,stacked_final_no_nelson_v1,GroupKFold(target_id),13821,404,1086,0.652988358,0.622185580,0.679833835,0.028096371,0.257425743,0.075253256,3.120250844,0.001064794,
+phase1plus,logreg_final_no_nelson_v1,GroupKFold(target_id),13821,404,1086,0.643348692,0.612797038,0.672710466,0.233225111,0.207920792,0.060781476,2.362689942,0.420943958,
+phase2plus,full_logreg_no_nelson,GroupKFold(target_id),8130,404,970,0.639157865,,,,,,,,0.000000000
+phase2plus,ablate_A_genetics,GroupKFold(target_id),8130,404,970,0.620380777,,,,,,,,-0.018777088
+phase2plus,ablate_B_mechanistic,GroupKFold(target_id),8130,404,970,0.626140869,,,,,,,,-0.013016995
+phase2plus,ablate_C_cell,GroupKFold(target_id),8130,404,970,0.642763730,,,,,,,,0.003605865
+phase2plus,ablate_D_animal,GroupKFold(target_id),8130,404,970,0.644425855,,,,,,,,0.005267991
+phase2plus,ablate_E_pd,GroupKFold(target_id),8130,404,970,0.613755020,,,,,,,,-0.025402844
+phase2plus,ablate_H_safety,GroupKFold(target_id),8130,404,970,0.635457488,,,,,,,,-0.003700377
+phase2plus,ablate_I_landscape,GroupKFold(target_id),8130,404,970,0.641346053,,,,,,,,0.002188188
+phase2plus,ablate_context,GroupKFold(target_id),8130,404,970,0.631651707,,,,,,,,-0.007506158

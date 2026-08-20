@@ -128,7 +128,7 @@ register_scorer("family_precedent_v1", scorer_family_precedent, "v1")
 
 
 # ============================================================
-# Baseline 3: genetic-only (Nelson-style)
+# Baseline 3: genetic-only
 # ============================================================
 
 def scorer_genetic_only(evidence: dict, context: dict) -> dict:
@@ -136,25 +136,6 @@ def scorer_genetic_only(evidence: dict, context: dict) -> dict:
     features = 0
     score = 0.0
     supporting, concerning = [], []
-
-    nelson = _v(evidence, "A_genetics", "nelson_tier")
-    if nelson:
-        features += 1
-        if nelson == "T4":
-            score += 1.0
-            supporting.append("Nelson T4")
-        elif nelson == "T3":
-            score += 0.7
-            supporting.append("Nelson T3")
-        elif nelson == "T2":
-            score += 0.5
-            supporting.append("Nelson T2")
-        elif nelson == "T1":
-            score += 0.3
-            supporting.append("Nelson T1")
-        elif nelson == "T0":
-            score -= 0.2
-            concerning.append("Nelson T0 (no human genetic support)")
 
     clingen = _v(evidence, "A_genetics", "clingen_n_strong")
     if clingen is not None:
@@ -207,40 +188,7 @@ register_scorer("genetic_only_v1", scorer_genetic_only, "v1")
 
 
 # ============================================================
-# Baseline 4: Nelson tier only (single feature)
-# ============================================================
-
-def scorer_nelson_only(evidence: dict, context: dict) -> dict:
-    """Reproduces Nelson 2015 / Minikel 2024 methodology directly."""
-    nelson = _v(evidence, "A_genetics", "nelson_tier")
-    if nelson == "T4":
-        p, tier_txt = 0.45, "T4 (Mendelian direction-matched)"
-    elif nelson == "T3":
-        p, tier_txt = 0.35, "T3 (Mendelian match)"
-    elif nelson == "T2":
-        p, tier_txt = 0.28, "T2 (GWAS coding)"
-    elif nelson == "T1":
-        p, tier_txt = 0.22, "T1 (GWAS non-coding)"
-    elif nelson == "T0":
-        p, tier_txt = 0.15, "T0 (no genetic support)"
-    else:
-        p, tier_txt = 0.18, "unknown"
-
-    return {
-        "predicted_p_approval": p,
-        "predicted_tier": _tier_from_p(p),
-        "top_supporting_dims": [tier_txt] if nelson and nelson != "T0" else [],
-        "top_concerning_dims": [tier_txt] if nelson == "T0" else [],
-        "score_confidence": "high" if nelson else "low",
-        "n_features_used": 1 if nelson else 0,
-    }
-
-
-register_scorer("nelson_only_v1", scorer_nelson_only, "v1")
-
-
-# ============================================================
-# Baseline 5: RS-composite (our best full-model)
+# Baseline 4: RS-composite (our best full-model)
 # ============================================================
 
 # Weights derived from observed RS in preclin.v_relative_success_clean.
@@ -367,7 +315,7 @@ def list_scorers() -> List[str]:
 if __name__ == "__main__":
     # Quick self-test: score TNIK
     demo = {
-        "A_genetics": {"nelson_tier": None, "mendelian_n": 2, "clingen_n_strong": 0,
+        "A_genetics": {"mendelian_n": 2, "clingen_n_strong": 0,
                        "gwas_n_sig": 93, "ot_genetic_max": 0.28, "ot_somatic_score_max": 0.15,
                        "ot_is_mendelian_any": False, "n_hpo_phenotypes": 7},
         "B_mechanistic": {"tractability_sm": True, "tractability_ab": False,

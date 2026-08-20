@@ -55,12 +55,7 @@ COHORT_SQL = """
       tw.depmap_n_dep_lineages, tw.depmap_mean_effect,
       tw.tractability_sm, tw.tractability_ab, tw.tractability_protac,
       tw.clingen_n_strong, tw.mendelian_n, tw.gwas_n_sig,
-      tw.ot_overall_max, tw.ot_genetic_max, tw.ot_animal_model_max, tw.ot_known_drug_max,
-      -- Nelson tier per (target, indication)
-      (SELECT value_text FROM preclin.evidence_score
-        WHERE subject_type='target_indication' AND subject_id = ti.target_id
-          AND subject_id2 = ti.indication_id AND dimension = 'nelson_tier'
-        ORDER BY extracted_at DESC LIMIT 1) AS nelson_tier
+      tw.ot_overall_max, tw.ot_genetic_max, tw.ot_animal_model_max, tw.ot_known_drug_max
     FROM preclin.v_target_indication_program ti
     JOIN public.targets t ON t.id = ti.target_id
     JOIN preclin.indication i ON i.indication_id = ti.indication_id
@@ -88,7 +83,6 @@ def row_to_evidence_context(row: dict) -> Tuple[dict, dict]:
     """Convert a cohort row to (evidence_dict, context_dict)."""
     evidence = {
         "A_genetics": {
-            "nelson_tier": row.get("nelson_tier"),
             "mendelian_n": row.get("mendelian_n"),
             "mendelian_n_dominant": row.get("mendelian_n_dominant"),
             "mendelian_n_recessive": row.get("mendelian_n_recessive"),

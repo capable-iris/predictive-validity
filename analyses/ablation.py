@@ -28,8 +28,6 @@ CATEGORIES = ["A_genetics", "B_mechanistic", "C_cell", "D_animal",
 def category_for_feature(name, category_map=None):
     """Return the reporting category for a model feature."""
     category_map = category_map or _ml.FEATURE_CATEGORIES
-    if name.startswith("nelson_"):
-        return "A_genetics"
     if name.startswith("ta_"):
         return "context"
     return category_map.get(name)
@@ -104,11 +102,14 @@ def main():
                   (scoring_function, scoring_version, cohort_definition,
                    n_ti_pairs, n_approved, n_failed, auc_roc, notes)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (f"logreg_strict_ablate_no_{cat}_holdout_target", "holdout_target_v1",
-                  "ti_phase2plus_strict_holdout_target", len(rows), int(y.sum()),
+            """, (f"logreg_strict_ablate_no_{cat}_holdout_target_no_nelson",
+                  "holdout_target_no_nelson_v1",
+                  "ti_phase2plus_strict_holdout_target_no_nelson",
+                  len(rows), int(y.sum()),
                   int(len(y) - y.sum()), auc_ab,
                   f"Ablate {cat}, strict outcome, LogReg, GroupKFold(target_id). "
-                  f"Full AUC={auc_full:.3f}, delta={delta:+.4f}"))
+                  f"nelson_tier excluded. Full AUC={auc_full:.3f}, "
+                  f"delta={delta:+.4f}"))
             conn.commit()
         conn.close()
 

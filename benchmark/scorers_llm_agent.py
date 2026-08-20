@@ -24,26 +24,18 @@ from importlib import import_module
 _runner = import_module("runner")
 _robust = import_module("scorers_ml")
 
-def _load_api_key():
-    env_key = os.environ.get("ANTHROPIC_API_KEY")
-    if env_key:
-        return env_key
-    # Iris .env has working key
-    for path in [
-        "/Users/melissadu/Documents/projects/capable/production/iris/.env",
-        "/Users/melissadu/Documents/projects/capable/.env",
-    ]:
-        try:
-            with open(path) as f:
-                for line in f:
-                    if line.startswith("ANTHROPIC_API_KEY="):
-                        return line.split("=", 1)[1].strip()
-        except FileNotFoundError:
-            continue
-    raise RuntimeError("No ANTHROPIC_API_KEY found")
+CLIENT = None
 
 
-CLIENT = Anthropic(api_key=_load_api_key())
+def get_client():
+    """Create the paid-model client only when scoring is explicitly run."""
+    global CLIENT
+    if CLIENT is None:
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise RuntimeError("ANTHROPIC_API_KEY is required")
+        CLIENT = Anthropic(api_key=api_key)
+    return CLIENT
 
 DB_URL = os.environ["DATABASE_URL"]
 
@@ -56,7 +48,6 @@ def compact_evidence(row: dict) -> str:
     ]
     ev_keys = [
         ("Genetics", [
-            ("Nelson tier", "nelson_tier"),
             ("ClinGen strong", "clingen_n_strong"),
             ("Mendelian associations", "mendelian_n"),
             ("Mendelian dominant", "mendelian_n_dominant"),
@@ -136,7 +127,7 @@ Return single JSON, no other text:
 def score_one(row: dict) -> dict:
     prompt = PROMPT_TEMPLATE.format(evidence_block=compact_evidence(row))
     try:
-        r = CLIENT.messages.create(
+        r = get_client().messages.create(
             model="claude-sonnet-4-6",
             max_tokens=400,
             messages=[{"role": "user", "content": prompt}],

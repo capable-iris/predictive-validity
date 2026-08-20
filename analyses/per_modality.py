@@ -40,11 +40,7 @@ PER_MODALITY_SQL = """
       s.n_programs, s.n_sponsors,
       i.therapeutic_area,
       tim.primary_modality,
-      tw.*,
-      (SELECT value_text FROM preclin.evidence_score
-        WHERE subject_type='target_indication' AND subject_id = s.target_id
-          AND subject_id2 = s.indication_id AND dimension = 'nelson_tier'
-        LIMIT 1) AS nelson_tier
+      tw.*
     FROM preclin.v_target_indication_strict_outcome s
     JOIN public.targets t ON t.id = s.target_id
     JOIN preclin.indication i ON i.indication_id = s.indication_id

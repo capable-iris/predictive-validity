@@ -26,7 +26,7 @@ Answers: **is the target causally implicated in the disease by human genetics?**
 | A6. **ClinGen validity** | Expert curation of gene-disease causality | ClinGen (`clingen_validity` in gb) | Definitive / Strong / Moderate / Limited / Disputed / Refuted |
 | A7. **Human phenotype breadth** | Number of distinct, positively observed terms in the HPO Phenotypic abnormality branch (`HP:0000118`) linked to the gene through human gene-disease annotations; a target-level, indication-agnostic pleiotropy proxy | Pinned official HPO release + `gene_phenotypes` in gb (OMIM/ORPHA annotations) | Count; inheritance, onset/course modifiers, and explicit zero-frequency annotations are excluded |
 
-**Composite:** Nelson tier T0-T4. Predictive effect: **~2.6× approval odds (Minikel 2024)**.
+**Composite:** Nelson tier T0-T4. The stored tier remains available for audit and descriptive analysis, but is temporarily excluded from predictive models because coverage in this database was selectively curated on approval-oriented pairs. Reintroduction requires uniform, indication-specific, pre-outcome computation and held-out-target validation.
 
 ### Category B — Mechanistic biology (per target, some drug-level)
 

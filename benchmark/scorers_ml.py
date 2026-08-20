@@ -14,10 +14,10 @@ Models:
 - LightGBM w/ isotonic post-calibration
 - RandomForest
 
-Features: 40+ evidence dimensions from v_target_evidence_wide + T-I context
-(Nelson tier one-hot, therapeutic area one-hot). Deliberately EXCLUDES leaky
-post-outcome features: n_sponsors, n_programs, max_phase_reached,
-ot_known_drug_max, ot_overall_max.
+Features: 40+ evidence dimensions from v_target_evidence_wide + therapeutic
+area context. Deliberately EXCLUDES leaky or outcome-selected features:
+n_sponsors, n_programs, max_phase_reached, ot_known_drug_max, ot_overall_max,
+and nelson_tier.
 """
 
 import os
@@ -58,6 +58,13 @@ DB_URL = os.environ["DATABASE_URL"]
 #   n_sponsors / n_programs / n_drugs / max_phase_reached — post-hoc program development
 #   ot_known_drug_max — Open Targets score derived from known approved drugs
 #   ot_overall_max — includes ot_known_drug_max as a component
+#   nelson_tier — selectively curated on known-drug/approval-oriented pairs;
+#                 missingness is therefore a near-proxy for the outcome
+
+EXCLUDED_PREDICTIVE_FEATURES = frozenset({
+    "n_sponsors", "n_programs", "n_drugs", "max_phase_reached",
+    "ot_known_drug_max", "ot_overall_max", "nelson_tier",
+})
 
 NUMERIC_FEATURES = [
     # A. Genetics
@@ -73,7 +80,9 @@ NUMERIC_FEATURES = [
     # C. Cell
     "line_c_lit", "depmap_n_dep_lineages", "depmap_mean_effect",
     # D. Animal
-    "line_d_lit", "ot_animal_model_max", "impc_n_phenotypes", "n_hpo_phenotypes",
+    "line_d_lit", "ot_animal_model_max", "impc_n_phenotypes",
+    # A. Genetics (kept here to preserve the established feature order)
+    "n_hpo_phenotypes",
     # E. Human PD
     "line_e_lit",
     # H. Safety
@@ -88,17 +97,15 @@ BOOL_FEATURES = [
     "depmap_pan_essential", "ot_is_mendelian_any",
 ]
 
-NELSON_TIERS = ["T0", "T1", "T2", "T3", "T4"]
 THERAPEUTIC_AREAS = ["oncology", "neuro", "autoimmune", "cv", "metabolic",
                      "rare", "infectious", "other"]
 
 FEATURE_NAMES = (NUMERIC_FEATURES + BOOL_FEATURES +
-                 [f"nelson_{t}" for t in NELSON_TIERS] +
                  [f"ta_{a}" for a in THERAPEUTIC_AREAS])
 
-# Canonical taxonomy used by category-level analyses. Feature order above is
-# intentionally unchanged so this metadata correction cannot affect a fitted
-# model or its predictions.
+# Canonical taxonomy used by category-level analyses. Predictive feature
+# additions and removals must be made through FEATURE_NAMES and covered by the
+# exclusion/category regression tests.
 FEATURE_CATEGORIES = {
     # A. Human genetics
     "mendelian_n": "A_genetics",
@@ -166,9 +173,6 @@ def row_to_feature_vector(row: dict) -> np.ndarray:
     for f in BOOL_FEATURES:
         v = row.get(f)
         feats.append(np.nan if v is None else (1.0 if v else 0.0))
-    tier = row.get("nelson_tier")
-    for t in NELSON_TIERS:
-        feats.append(1.0 if tier == t else 0.0)
     ta = row.get("therapeutic_area") or "other"
     for a in THERAPEUTIC_AREAS:
         feats.append(1.0 if ta == a else 0.0)
@@ -307,11 +311,7 @@ STRICT_COHORT_SQL = """
       s.first_trial_date, s.max_phase_reached,
       s.n_programs, s.n_sponsors, s.outcomes_broad_all,
       t.symbol AS target_symbol, i.display_name AS indication_name,
-      i.therapeutic_area, tw.*,
-      (SELECT value_text FROM preclin.evidence_score
-        WHERE subject_type='target_indication' AND subject_id = s.target_id
-          AND subject_id2 = s.indication_id AND dimension = 'nelson_tier'
-        LIMIT 1) AS nelson_tier
+      i.therapeutic_area, tw.*
     FROM preclin.v_target_indication_strict_outcome s
     JOIN public.targets t ON t.id = s.target_id
     JOIN preclin.indication i ON i.indication_id = s.indication_id
