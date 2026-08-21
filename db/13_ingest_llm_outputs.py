@@ -12,7 +12,7 @@ Examples:
       --task target-literature data/target_evidence/literature_scores_2026.jsonl
 
     .venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
-      --task nelson-tier data/target_evidence/nelson_tiers_all_v4.jsonl
+      --task nelson-tier data/target_evidence/nelson_tiers_all_v5.jsonl
 
 Migration ``10_clinical_trial_source_audit.sql`` must be applied first. New
 rows are required to contain the exact audit metadata written by
@@ -597,8 +597,8 @@ def ingest_row(cur, task: str, row: dict) -> tuple[int, int]:
         return 0, facts
 
     if task == "nelson-tier":
-        if row.get("schema_version") != "nelson_tier_result_v4":
-            raise ValueError("nelson-tier row must use nelson_tier_result_v4")
+        if row.get("schema_version") != "nelson_tier_result_v5":
+            raise ValueError("nelson-tier row must use nelson_tier_result_v5")
         tier = str(row.get("tier") or "").upper()
         if tier not in {"T0", "T1", "T2", "T3"}:
             raise ValueError(f"invalid Nelson tier: {tier!r}")

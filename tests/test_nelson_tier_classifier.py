@@ -194,7 +194,7 @@ class NelsonTierClassifierTests(unittest.TestCase):
         )
         with patch.object(nelson, "call_with_retry", return_value=response):
             row = nelson.score_one_pair(object(), dossier, "test-model")
-        self.assertEqual(row["schema_version"], "nelson_tier_result_v4")
+        self.assertEqual(row["schema_version"], "nelson_tier_result_v5")
         self.assertEqual(row["_source_documents"], [
             {
                 "source_document_id": 100,
@@ -269,6 +269,21 @@ class NelsonTierClassifierTests(unittest.TestCase):
         hint = nelson.disease_match_hint(pair, {"trait": "psoriasis"})
         self.assertEqual(hint["relation_hint"], "exact_text")
         self.assertFalse(hint["binding"])
+
+    def test_gwas_date_is_preserved_in_deterministic_eligibility(self):
+        eligibility = nelson.deterministic_eligibility(
+            "gwas_associations",
+            {
+                "p_value": 1e-10,
+                "context": "missense_variant",
+                "study_accession": "GCST1",
+                "evidence_available_date": "2018-03-02",
+                "date_basis": "gwas_catalog_publication_date",
+                "date_source_version": "r2026-08-03",
+            },
+        )
+        self.assertEqual(eligibility["evidence_available_date"], "2018-03-02")
+        self.assertEqual(eligibility["date_source_version"], "r2026-08-03")
 
 
 if __name__ == "__main__":

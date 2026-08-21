@@ -59,7 +59,7 @@ Prepare and inspect the full cohort without spending money:
 .venv/bin/dotenv run -- .venv/bin/python \
   analyses/classifiers/nelson_tier_classify.py \
   --all-clinical --prepare-only \
-  --out data/target_evidence/nelson_tiers_all_v4.jsonl
+  --out data/target_evidence/nelson_tiers_all_v5.jsonl
 ```
 
 Remove `--prepare-only` only after explicit approval for the paid run. The

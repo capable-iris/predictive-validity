@@ -54,6 +54,20 @@ Relative Success views from their checked-in definitions. Pass
 `--ontology /path/to/hp.obo` to use an already downloaded copy; the digest is
 still verified.
 
+Migration 17 adds versioned study-level evidence dates. Populate them from the
+official GWAS Catalog study release (no publication text or LLM calls):
+
+```bash
+.venv/bin/dotenv run -- sh -c \
+  'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f db/17_gwas_study_dates.sql'
+.venv/bin/dotenv run -- .venv/bin/python db/18_ingest_gwas_study_dates.py --dry-run
+.venv/bin/dotenv run -- .venv/bin/python db/18_ingest_gwas_study_dates.py
+```
+
+The loader stores one date per GWAS Catalog study accession and the release
+URL, version, and SHA-256. All association rows inherit the date through
+`preclin.v_gwas_study_date_latest`.
+
 ## Cohort-wide genetics tiers
 
 `analyses/classifiers/nelson_tier_classify.py --all-clinical` enumerates all
@@ -74,9 +88,9 @@ For an incremental ingest, validate first and then commit only these rows:
 
 ```bash
 .venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
-  --task nelson-tier --dry-run data/target_evidence/nelson_tiers_all_v4.jsonl
+  --task nelson-tier --dry-run data/target_evidence/nelson_tiers_all_v5.jsonl
 .venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
-  --task nelson-tier data/target_evidence/nelson_tiers_all_v4.jsonl
+  --task nelson-tier data/target_evidence/nelson_tiers_all_v5.jsonl
 .venv/bin/dotenv run -- sh -c \
   'psql "$DATABASE_URL" -f db/16_nelson_tier_view.sql'
 ```

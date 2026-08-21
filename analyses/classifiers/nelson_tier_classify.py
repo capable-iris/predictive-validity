@@ -16,20 +16,20 @@ Examples::
     .venv/bin/dotenv run -- .venv/bin/python \
       analyses/classifiers/nelson_tier_classify.py \
       --all-clinical --prepare-only \
-      --out data/target_evidence/nelson_tiers_all_v4.jsonl
+      --out data/target_evidence/nelson_tiers_all_v5.jsonl
 
     # Paid scoring pass over the already prepared dossiers. This requires
     # explicit approval before it is run.
     .venv/bin/dotenv run -- .venv/bin/python \
       analyses/classifiers/nelson_tier_classify.py \
       --all-clinical \
-      --out data/target_evidence/nelson_tiers_all_v4.jsonl
+      --out data/target_evidence/nelson_tiers_all_v5.jsonl
 
     # Score selected pairs instead.
     .venv/bin/dotenv run -- .venv/bin/python \
       analyses/classifiers/nelson_tier_classify.py \
       --pair UNC13A:ALS --pair NTRK2:Alzheimer \
-      --out data/target_evidence/nelson_tiers_selected_v4.jsonl
+      --out data/target_evidence/nelson_tiers_selected_v5.jsonl
 
 By default, dossiers are written beside ``--out`` as
 ``<stem>.dossiers.jsonl``. PubMed records are read from the immutable
@@ -65,9 +65,9 @@ from common import (  # noqa: E402
 )
 
 
-PROMPT_VERSION = "v4"
-DOSSIER_SCHEMA_VERSION = "nelson_evidence_dossier_v4"
-RESULT_SCHEMA_VERSION = "nelson_tier_result_v4"
+PROMPT_VERSION = "v5"
+DOSSIER_SCHEMA_VERSION = "nelson_evidence_dossier_v5"
+RESULT_SCHEMA_VERSION = "nelson_tier_result_v5"
 DEFAULT_MODEL = "claude-sonnet-4-6"
 DEFAULT_MAX_EVIDENCE_CHARS = 400_000
 VALID_TIERS = frozenset({"T0", "T1", "T2", "T3"})
@@ -96,7 +96,7 @@ USER_TEMPLATE = """Target-indication pair:
   Gene: {gene}
   Indication: {indication}
 
-Repository genetics-support rubric (version 4):
+Repository genetics-support rubric (version 5):
 - T0 — no reproducible indication-matched human genetic association
 - T1 — GWAS association only, without confident target resolution or direction
 - T2 — replicated common-variant evidence resolved to this target (coding,
@@ -379,12 +379,20 @@ def fetch_target_evidence(cur, target_id: int | None) -> dict[str, list[dict[str
 
     cur.execute(
         """
-        SELECT id, rsid, chromosome, position, effect_allele, risk_allele_freq,
-               p_value, p_value_mlog, or_or_beta, ci_text, trait,
-               mapped_trait_uri, study_accession, study_pmid, context
-        FROM public.gwas_associations
-        WHERE target_id = %s
-        ORDER BY p_value ASC NULLS LAST, id
+        SELECT ga.id, ga.rsid, ga.chromosome, ga.position, ga.effect_allele,
+               ga.risk_allele_freq, ga.p_value, ga.p_value_mlog,
+               ga.or_or_beta, ga.ci_text, ga.trait, ga.mapped_trait_uri,
+               ga.study_accession, ga.study_pmid, ga.context,
+               gsd.evidence_available_date, gsd.catalog_added_date,
+               gsd.date_basis, gsd.date_precision,
+               gsd.source_version AS date_source_version,
+               gsd.source_url AS date_source_url,
+               gsd.source_content_sha256 AS date_source_content_sha256
+        FROM public.gwas_associations ga
+        LEFT JOIN preclin.v_gwas_study_date_latest gsd
+          ON gsd.study_accession = ga.study_accession
+        WHERE ga.target_id = %s
+        ORDER BY ga.p_value ASC NULLS LAST, ga.id
         """,
         (target_id,),
     )
@@ -613,6 +621,9 @@ def deterministic_eligibility(
             "genome_wide_significant": significant,
             "coding_consequence": coding,
             "study_accession": row.get("study_accession"),
+            "evidence_available_date": row.get("evidence_available_date"),
+            "date_basis": row.get("date_basis"),
+            "date_source_version": row.get("date_source_version"),
         }
         if significant and coding:
             ceiling = "T2"
