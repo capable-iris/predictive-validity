@@ -67,12 +67,14 @@ drug_ev AS (
 ),
 -- Nelson tier per (target, indication)
 tgt_ind_ev AS (
-  SELECT
+  SELECT DISTINCT ON (subject_id, subject_id2)
     subject_id AS target_id, subject_id2 AS indication_id,
-    MAX(CASE WHEN dimension = 'nelson_tier' THEN value_text END) AS nelson_tier
+    value_text AS nelson_tier
   FROM preclin.evidence_score
   WHERE subject_type = 'target_indication'
-  GROUP BY subject_id, subject_id2
+    AND dimension = 'nelson_tier'
+    AND source = 'nelson_llm'
+  ORDER BY subject_id, subject_id2, extracted_at DESC, evidence_id DESC
 ),
 -- Genome-browser DB-native scores (read directly)
 gb_gene AS (

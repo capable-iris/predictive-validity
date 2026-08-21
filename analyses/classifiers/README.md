@@ -26,13 +26,41 @@ export DATABASE_URL=postgres://...
 | `score_target_literature.py` | Line B/C/D/E evidence scores per target | `data/target_evidence/literature_scores.jsonl` | Haiku | ~$30-60 |
 | `classify_why_stopped.py` | Trial termination classification. First-pass (default) OR verify (`--verify-from PRIOR.jsonl`). | `data/clinical_trials/why_stopped_*.jsonl` | Haiku (first-pass) / Sonnet (verify) | Haiku ~$5-10 / Sonnet ~$20-40 |
 | `classify_silent_kill.py` | Ph3+ silent-kill verification per drug | `data/silent_kill_verified.jsonl` | Sonnet | ~$50-150 |
-| `nelson_tier_classify.py` | T-I Nelson tier assignment | `data/target_evidence/nelson_tiers_batch_YYYYMMDD.csv` | Sonnet | ~$50 |
+| `nelson_tier_classify.py` | Cohort-wide T-I genetics-tier adjudication | `data/target_evidence/nelson_tiers_*.jsonl` + `.dossiers.jsonl` | Sonnet | depends on cohort/prompt size |
 
 `nelson_tier` is retained for audit and descriptive analysis but is temporarily
 excluded from all predictive scorers because existing coverage was selectively
 curated on approval-oriented pairs. Do not run a bulk tiering job to restore it
 as a model feature: reintroduction requires uniform, indication-specific,
 pre-outcome computation and held-out-target validation.
+
+The v2 Nelson workflow enumerates every non-placebo human target-indication
+pair represented in `preclin.program`; it does not join approval, outcome, or
+phase tables. Before any optional LLM call, it writes a full evidence dossier
+containing every Mendelian, ClinGen, GWAS, Open Targets, and supplied cached
+PubMed record retrieved. The prompt uses a bounded indication-prioritized
+subset, while the dossier remains untruncated and is linked to the result by a
+SHA-256 digest.
+
+Prepare and inspect the full cohort without spending money:
+
+```bash
+.venv/bin/dotenv run -- .venv/bin/python \
+  analyses/classifiers/nelson_tier_classify.py \
+  --all-clinical --prepare-only \
+  --out data/target_evidence/nelson_tiers_all_v2.jsonl
+```
+
+Remove `--prepare-only` only after explicit approval for the paid run. The
+scoring pass resumes from the saved dossiers, so the exact evidence supplied
+to the model is stable. Use `--abstracts-cache-dir DIR` to include per-gene
+`DIR/<GENE>.jsonl` abstract caches; every valid cached abstract is saved. Add
+`--fetch-cited-pubmed --ncbi-email you@example.org` to retrieve complete
+PubMed citation metadata and abstracts for every PMID referenced by the GWAS
+and Open Targets evidence. Fetches are batched and limited to NCBI's published
+request rate; `NCBI_API_KEY` is used automatically when set. PubMed abstracts
+may be copyrighted, so retain the stored source URL and observe the
+[NCBI disclaimer](https://www.ncbi.nlm.nih.gov/About/disclaimer.html).
 
 **Canonical cost field is `_cost_usd`.** Older classifier outputs used
 `_cost_share` (Sonnet why_stopped verify) or `_cost` (silent_kill,
@@ -88,8 +116,9 @@ imputes cohort medians for those. To close the gap:
     --targets UNC13A,NTRK2,ADCYAP1R1,KL,GALR1,NPY1R,GHSR,VIPR2,APLNR,VGF,CORT \
     --out data/target_evidence/literature_scores_neuro_2026.jsonl
 
-# 3. Assign Nelson tiers for each T-I pair
-python3 analyses/classifiers/nelson_tier_classify.py \
+# 3. Prepare complete evidence dossiers for each T-I pair (no paid calls)
+.venv/bin/dotenv run -- .venv/bin/python \
+  analyses/classifiers/nelson_tier_classify.py \
     --pair UNC13A:ALS \
     --pair NTRK2:Alzheimer \
     --pair ADCYAP1R1:Alzheimer \
@@ -101,15 +130,27 @@ python3 analyses/classifiers/nelson_tier_classify.py \
     --pair APLNR:Ischemic-stroke \
     --pair VGF:Alzheimer \
     --pair CORT:Alzheimer \
-    --out data/target_evidence/nelson_tiers_batch_neuro_2026.csv
+    --prepare-only \
+    --out data/target_evidence/nelson_tiers_neuro_v2.jsonl
 
-# 4. Incrementally ingest the audited literature runs
+# 4. After explicit spend approval, rerun the same Nelson command without
+#    --prepare-only. It reuses the exact saved dossiers and writes score rows.
+
+# 5. Incrementally ingest the audited literature runs
 .venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
     --task target-literature \
     data/target_evidence/literature_scores_neuro_2026.jsonl
 
-# 5. Rescore
-python3 analyses/score_neuro_candidates.py
+# 6. Validate, then ingest only the Nelson output (no full database reingest)
+.venv/bin/dotenv run -- .venv/bin/python db/15_ingest_nelson_tiers.py --dry-run
+.venv/bin/dotenv run -- .venv/bin/python db/15_ingest_nelson_tiers.py
+
+# 7. Update the established database view without rerunning bootstrap views
+.venv/bin/dotenv run -- sh -c \
+  'psql "$DATABASE_URL" -f db/16_nelson_tier_v2_view.sql'
+
+# 8. Rescore
+.venv/bin/dotenv run -- .venv/bin/python analyses/score_neuro_candidates.py
 ```
 
 Expected total cost: ~$1-3.
@@ -138,6 +179,11 @@ Cumulative spend is also printed after each row while a script runs.
   the scorer fails before any paid call if an input lacks a stable
   `source_document_id`. Trial-linked abstracts are handled separately by
   `db/11_ingest_trial_sources.py`.
+- **Broad PubMed searching.** The Nelson classifier can fetch full PubMed
+  records for PMIDs already cited by structured genetic evidence and can read
+  supplied per-gene JSONL caches. Discovering a broad gene/indication corpus
+  remains outside this repository. The Nelson dossier preserves every fetched
+  or supplied record verbatim.
 
 ## Adding a new classifier
 

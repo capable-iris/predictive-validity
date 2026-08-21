@@ -54,6 +54,30 @@ Relative Success views from their checked-in definitions. Pass
 `--ontology /path/to/hp.obo` to use an already downloaded copy; the digest is
 still verified.
 
+## Cohort-wide genetics tiers
+
+`analyses/classifiers/nelson_tier_classify.py --all-clinical` enumerates all
+non-placebo human target-indication pairs from program and drug-target tables,
+without reading outcomes or approvals. Versioned score files under
+`data/target_evidence/nelson_tiers_*.jsonl` are ingested by `02_ingest.py` as
+source `nelson_llm`. Adjacent `*.dossiers.jsonl` files are audit artifacts and
+are never mistaken for scores. `03_views.sql` exposes only the newest
+cohort-wide `nelson_llm` row; legacy approval-derived tiers remain in the long
+table for audit but cannot populate the canonical view.
+
+For an incremental ingest, validate first and then commit only these rows:
+
+```bash
+.venv/bin/dotenv run -- .venv/bin/python db/15_ingest_nelson_tiers.py --dry-run
+.venv/bin/dotenv run -- .venv/bin/python db/15_ingest_nelson_tiers.py
+.venv/bin/dotenv run -- sh -c \
+  'psql "$DATABASE_URL" -f db/16_nelson_tier_v2_view.sql'
+```
+
+Migration 16 uses `CREATE OR REPLACE VIEW`, preserving all dependent views. It
+must be used for an established database instead of rerunning the bootstrap
+`03_views.sql`, whose `DROP VIEW ... CASCADE` is intended only for a full setup.
+
 ## Tables
 
 | Table | Rows | Purpose |

@@ -37,3 +37,7 @@ catboost_info/
 *.model
 *.pkl
 *.joblib
+
+# Generated target-report artifacts and local scratch space
+/output/
+/tmp/
