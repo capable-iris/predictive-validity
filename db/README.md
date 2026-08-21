@@ -34,6 +34,26 @@ From the repository root:
 The core database setup takes ~15 minutes; source ingestion time depends on the
 selected trial scope.
 
+## Existing database migrations
+
+Run migrations from the repository root. Fresh ingests already contain these
+changes in the numbered setup files.
+
+```bash
+# Validate against the pinned official HPO release without committing.
+.venv/bin/dotenv run -- .venv/bin/python db/14_reclassify_hpo_evidence.py --dry-run
+
+# Apply after review.
+.venv/bin/dotenv run -- .venv/bin/python db/14_reclassify_hpo_evidence.py
+```
+
+Migration 14 verifies the published SHA-256 for HPO release 2026-06-23,
+materializes the active descendants of `HP:0000118` as a positive allowlist,
+excludes explicit zero-frequency annotations, and recreates the two affected
+Relative Success views from their checked-in definitions. Pass
+`--ontology /path/to/hp.obo` to use an already downloaded copy; the digest is
+still verified.
+
 ## Tables
 
 | Table | Rows | Purpose |

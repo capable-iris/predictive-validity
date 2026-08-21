@@ -36,6 +36,7 @@ RS_TABLE = [
     ("ot_somatic_score_max", 0.3, "gte", 1.63),
     ("mendelian_n_dominant", 1, "gte", 1.35),   # rough estimate
     ("mendelian_n_recessive", 1, "gte", 1.30),
+    ("n_hpo_phenotypes", 10, "gte", 0.69),      # preserve prior score; category-only move
     # B. Mechanistic
     ("n_reactome_pathways", 5, "gte", 2.81),   # top signal per our RS
     ("n_ppi_partners", 50, "gte", 1.02),
@@ -51,7 +52,6 @@ RS_TABLE = [
     ("line_d_lit", 2, "gte", 1.47),
     ("ot_animal_model_max", 0.3, "gte", 1.28),
     ("impc_n_phenotypes", 3, "gte", 1.35),
-    ("n_hpo_phenotypes", 10, "gte", 0.69),
     # E. Human PD
     ("line_e_lit", 2, "gte", 2.18),
     # H. Safety

@@ -16,10 +16,14 @@ Runs against Neon directly — pulls from public.*, inserts into preclin.evidenc
 Idempotent via ON CONFLICT.
 """
 
+import argparse
 import os
 import time
+from pathlib import Path
 import psycopg2
 from psycopg2.extras import execute_values
+
+from hpo_ontology import ONTOLOGY_RELEASE, ensure_reference_table
 
 
 def with_retry(conn, fn, max_attempts=5):
@@ -70,9 +74,9 @@ NEW_DIMENSIONS = [
     ("n_suggestive_diseases", "I_landscape", "target", "count",
      "Number of diseases with suggestive evidence",
      "target_pleiotropy", None),
-    # Category D/H — phenotype pleiotropy
-    ("n_hpo_phenotypes", "D_animal", "target", "count",
-     "Human Phenotype Ontology terms linked to gene mutations",
+    # Category A — target-level human genetic phenotype breadth
+    ("n_hpo_phenotypes", "A_genetics", "target", "count",
+     f"Distinct positively observed HPO Phenotypic abnormality terms (HP:0000118 branch, HPO {ONTOLOGY_RELEASE}); target-level and indication-agnostic",
      "gene_phenotypes", None),
     # Category A — Open Targets granular
     ("ot_l2g_score_max", "A_genetics", "target", "numeric_float",
@@ -111,8 +115,17 @@ INGEST_QUERIES = [
      "SELECT target_id, n_causal_diseases FROM public.target_pleiotropy WHERE n_causal_diseases IS NOT NULL"),
     ("n_suggestive_diseases", "I_landscape", "target", "value_numeric",
      "SELECT target_id, n_suggestive_diseases FROM public.target_pleiotropy WHERE n_suggestive_diseases IS NOT NULL"),
-    ("n_hpo_phenotypes", "D_animal", "target", "value_numeric",
-     "SELECT target_id, count(DISTINCT hpo_id) FROM public.gene_phenotypes GROUP BY target_id"),
+    ("n_hpo_phenotypes", "A_genetics", "target", "value_numeric",
+     """SELECT gp.target_id,
+               count(DISTINCT gp.hpo_id) FILTER (
+                 WHERE branch.hpo_id IS NOT NULL
+                   AND lower(coalesce(trim(gp.frequency), ''))
+                       NOT IN ('hp:0040285', '0', '0%', 'excluded')
+                   AND coalesce(trim(gp.frequency), '') !~ '^0\\s*/'
+               )
+          FROM public.gene_phenotypes gp
+          LEFT JOIN preclin.hpo_phenotypic_abnormality_term branch USING (hpo_id)
+         GROUP BY gp.target_id"""),
     ("ot_l2g_score_max", "A_genetics", "target", "value_numeric",
      "SELECT target_id, MAX(l2g_score) FROM public.target_evidence WHERE l2g_score IS NOT NULL GROUP BY target_id"),
     ("ot_somatic_score_max", "A_genetics", "target", "value_numeric",
@@ -128,9 +141,78 @@ INGEST_QUERIES = [
 ]
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument(
+        "--hpo-ontology",
+        type=Path,
+        help="Optional local copy of the pinned hp.obo release; digest is verified",
+    )
+    return parser.parse_args()
+
+
+def upsert_hpo_rows(cur, rows):
+    """Idempotently update target-level HPO rows despite nullable key columns."""
+    columns = """
+      subject_type, subject_id, subject_id2, dimension, category,
+      value_numeric, value_text, value_boolean, source, source_version,
+      confidence, citation_pmids, extracted_by
+    """
+    execute_values(
+        cur,
+        f"""
+        WITH incoming ({columns}) AS (VALUES %s)
+        UPDATE preclin.evidence_score es
+        SET category = incoming.category,
+            value_numeric = incoming.value_numeric::double precision,
+            value_text = incoming.value_text,
+            value_boolean = incoming.value_boolean::boolean,
+            extracted_by = incoming.extracted_by,
+            extracted_at = now()
+        FROM incoming
+        WHERE es.subject_type = incoming.subject_type
+          AND es.subject_id = incoming.subject_id
+          AND es.subject_id2 IS NOT DISTINCT FROM incoming.subject_id2::integer
+          AND es.dimension = incoming.dimension
+          AND es.source = incoming.source
+          AND es.source_version IS NOT DISTINCT FROM incoming.source_version
+        """,
+        rows,
+        page_size=2000,
+    )
+    execute_values(
+        cur,
+        f"""
+        WITH incoming ({columns}) AS (VALUES %s)
+        INSERT INTO preclin.evidence_score ({columns})
+        SELECT subject_type, subject_id::integer, subject_id2::integer,
+               dimension, category, value_numeric::double precision,
+               value_text, value_boolean::boolean, source, source_version,
+               confidence, citation_pmids::text[], extracted_by
+        FROM incoming
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM preclin.evidence_score es
+          WHERE es.subject_type = incoming.subject_type
+            AND es.subject_id = incoming.subject_id
+            AND es.subject_id2 IS NOT DISTINCT FROM incoming.subject_id2::integer
+            AND es.dimension = incoming.dimension
+            AND es.source = incoming.source
+            AND es.source_version IS NOT DISTINCT FROM incoming.source_version
+        )
+        """,
+        rows,
+        page_size=2000,
+    )
+
+
 def main():
+    args = parse_args()
     conn = psycopg2.connect(DB_URL)
     cur = conn.cursor()
+
+    hpo_terms = ensure_reference_table(cur, args.hpo_ontology)
+    print(f"HPO phenotypic-abnormality terms: {hpo_terms} ({ONTOLOGY_RELEASE})")
 
     # Register dimensions
     print("Registering dimensions...")
@@ -140,6 +222,7 @@ def main():
               (dimension, category, subject_type, data_type, description, source_primary)
             VALUES (%s, %s, %s, %s, %s, %s)
             ON CONFLICT (dimension) DO UPDATE SET
+              category = EXCLUDED.category,
               description = EXCLUDED.description,
               source_primary = EXCLUDED.source_primary
         """, (dim, cat, subj, dtype, desc, source))
@@ -181,7 +264,9 @@ def main():
                                     source_str, "2026", None, None,
                                     "script:05_ingest_extra"))
 
-        if insert_rows:
+        if insert_rows and dim == "n_hpo_phenotypes":
+            upsert_hpo_rows(cur, insert_rows)
+        elif insert_rows:
             execute_values(cur, """
                 INSERT INTO preclin.evidence_score
                   (subject_type, subject_id, subject_id2, dimension, category,
@@ -190,6 +275,7 @@ def main():
                 VALUES %s
                 ON CONFLICT (subject_type, subject_id, subject_id2, dimension, source, source_version)
                 DO UPDATE SET
+                  category = EXCLUDED.category,
                   value_numeric = EXCLUDED.value_numeric,
                   value_text = EXCLUDED.value_text,
                   value_boolean = EXCLUDED.value_boolean,
@@ -232,7 +318,10 @@ def main():
                confidence, citation_pmids, extracted_by)
             VALUES %s
             ON CONFLICT (subject_type, subject_id, subject_id2, dimension, source, source_version)
-            DO UPDATE SET value_boolean = EXCLUDED.value_boolean, extracted_at = now()
+            DO UPDATE SET
+              category = EXCLUDED.category,
+              value_boolean = EXCLUDED.value_boolean,
+              extracted_at = now()
         """, insert_rows, page_size=2000)
     conn.commit()
     print(f"{len(insert_rows)} rows")

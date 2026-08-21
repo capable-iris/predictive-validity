@@ -64,6 +64,7 @@ def compact_evidence(row: dict) -> str:
             ("GWAS significant", "gwas_n_sig"),
             ("OT genetic score", "ot_genetic_max"),
             ("OT somatic score", "ot_somatic_score_max"),
+            ("HPO phenotype breadth", "n_hpo_phenotypes"),
         ]),
         ("Mechanistic", [
             ("Tractable small mol", "tractability_sm"),
@@ -84,7 +85,6 @@ def compact_evidence(row: dict) -> str:
             ("Line D lit", "line_d_lit"),
             ("OT animal model", "ot_animal_model_max"),
             ("IMPC KO phenotypes", "impc_n_phenotypes"),
-            ("HPO phenotypes", "n_hpo_phenotypes"),
         ]),
         ("Human PD", [
             ("Line E lit", "line_e_lit"),
