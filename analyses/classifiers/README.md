@@ -62,6 +62,34 @@ Prepare and inspect the full cohort without spending money:
   --out data/target_evidence/nelson_tiers_all_v5.jsonl
 ```
 
+For a reproducible 50-pair pilot, prepare an outcome-blind random sample:
+
+```bash
+.venv/bin/dotenv run -- .venv/bin/python \
+  analyses/classifiers/nelson_tier_classify.py \
+  --all-clinical --sample-size 50 --seed 20260821 --prepare-only \
+  --out data/target_evidence/nelson_tiers_pilot_v5.jsonl
+```
+
+Large scoring runs should use the asynchronous Message Batches workflow. The
+submit command begins paid work and requires an explicit confirmation flag;
+collection is resumable and validates every response against the submitted
+dossier and prompt hashes:
+
+```bash
+.venv/bin/dotenv run -- .venv/bin/python \
+  analyses/classifiers/nelson_tier_batch.py submit \
+  --dossiers data/target_evidence/nelson_tiers_pilot_v5.dossiers.jsonl \
+  --manifest data/target_evidence/nelson_tiers_pilot_v5.batches.jsonl \
+  --confirm-paid-batch
+
+.venv/bin/dotenv run -- .venv/bin/python \
+  analyses/classifiers/nelson_tier_batch.py collect \
+  --dossiers data/target_evidence/nelson_tiers_pilot_v5.dossiers.jsonl \
+  --manifest data/target_evidence/nelson_tiers_pilot_v5.batches.jsonl \
+  --out data/target_evidence/nelson_tiers_pilot_v5.jsonl
+```
+
 Remove `--prepare-only` only after explicit approval for the paid run. The
 scoring pass resumes from the saved dossiers, so the exact evidence supplied
 to the model is stable. Import caches or cited PMIDs first with

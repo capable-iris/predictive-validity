@@ -44,6 +44,7 @@ import argparse
 import csv
 import hashlib
 import json
+import random
 import re
 import sys
 from dataclasses import asdict, dataclass, field
@@ -332,8 +333,8 @@ def load_pairs_from_csv(cur, path: Path) -> list[Pair]:
 
 def load_requested_pairs(cur, args) -> list[Pair]:
     if args.all_clinical:
-        return all_clinical_pairs(cur, args.limit)
-    if args.pairs:
+        pairs = all_clinical_pairs(cur, None if args.sample_size else args.limit)
+    elif args.pairs:
         pairs = load_pairs_from_csv(cur, args.pairs)
     else:
         pairs = []
@@ -342,6 +343,19 @@ def load_requested_pairs(cur, args) -> list[Pair]:
                 raise SystemExit(f"--pair '{raw}' expects GENE:INDICATION")
             gene, indication = raw.split(":", 1)
             pairs.append(resolve_pair_ids(cur, gene.strip(), indication.strip()))
+    if args.sample_size is not None:
+        if args.sample_size <= 0:
+            raise SystemExit("--sample-size must be positive")
+        if args.sample_size > len(pairs):
+            raise SystemExit(
+                f"--sample-size {args.sample_size} exceeds {len(pairs)} available pairs"
+            )
+        pairs = random.Random(args.seed).sample(pairs, args.sample_size)
+        pairs.sort(key=lambda pair: (
+            pair.target_id if pair.target_id is not None else -1,
+            pair.indication_id if pair.indication_id is not None else -1,
+            pair.key,
+        ))
     return pairs[: args.limit] if args.limit is not None else pairs
 
 
@@ -962,12 +976,11 @@ def validate_model_support(
     }
 
 
-def score_one_pair(
-    client,
+def render_model_input(
     dossier: dict[str, Any],
-    model: str,
     max_evidence_chars: int = DEFAULT_MAX_EVIDENCE_CHARS,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], str]:
+    """Render and validate the exact evidence payload sent to a model."""
     pair = dossier["pair"]
     dossier_document_id = dossier.get("dossier_source_document_id")
     if not isinstance(dossier_document_id, int):
@@ -993,7 +1006,18 @@ def score_one_pair(
         indication=pair["indication"],
         evidence_json=json.dumps(selected, indent=2, sort_keys=True),
     )
-    result = call_with_retry(client, model, SYSTEM_PROMPT, user, max_tokens=1024)
+    return selected, user
+
+
+def parse_model_result(
+    result,
+    dossier: dict[str, Any],
+    selected: dict[str, Any],
+) -> dict[str, Any]:
+    """Validate one synchronous or batch response into an auditable result."""
+    pair = dossier["pair"]
+    dossier_document_id = dossier["dossier_source_document_id"]
+    selected_documents = selected.get("pubmed_documents", [])
     row = extract_json_block(result.text)
     tier = str(row.get("tier", "")).upper()
     genetic_direction = str(row.get("genetic_effect_direction", "")).lower()
@@ -1063,6 +1087,19 @@ def score_one_pair(
     return row
 
 
+def score_one_pair(
+    client,
+    dossier: dict[str, Any],
+    model: str,
+    max_evidence_chars: int = DEFAULT_MAX_EVIDENCE_CHARS,
+) -> dict[str, Any]:
+    selected, user = render_model_input(
+        dossier, max_evidence_chars=max_evidence_chars
+    )
+    result = call_with_retry(client, model, SYSTEM_PROMPT, user, max_tokens=1024)
+    return parse_model_result(result, dossier, selected)
+
+
 def default_dossiers_path(out: Path) -> Path:
     suffix = out.suffix or ".jsonl"
     return out.with_name(f"{out.stem}.dossiers{suffix}")
@@ -1092,7 +1129,19 @@ def parse_args(argv: Iterable[str] | None = None):
         action="store_true",
         help="Save all evidence dossiers without making paid LLM calls",
     )
-    ap.add_argument("--limit", type=int, default=None, help="Cap pairs for a batch")
+    selection = ap.add_mutually_exclusive_group()
+    selection.add_argument(
+        "--limit", type=int, default=None, help="Take the first N ordered pairs"
+    )
+    selection.add_argument(
+        "--sample-size",
+        type=int,
+        default=None,
+        help="Take a reproducible outcome-blind random sample of N pairs",
+    )
+    ap.add_argument(
+        "--seed", type=int, default=20260821, help="Seed used by --sample-size"
+    )
     ap.add_argument(
         "--max-evidence-chars",
         type=int,
