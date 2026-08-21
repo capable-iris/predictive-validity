@@ -43,7 +43,7 @@ def batch_request(dossier: dict[str, Any], model: str, max_chars: int) -> tuple[
         "custom_id": request_id,
         "params": {
             "model": model,
-            "max_tokens": 1024,
+            "max_tokens": nelson.MODEL_MAX_TOKENS,
             "temperature": 0.0,
             "system": nelson.SYSTEM_PROMPT,
             "messages": [{"role": "user", "content": user}],
@@ -224,7 +224,7 @@ def collect_batch(client, batch_row: dict, args, offsets: dict[str, int], done: 
                 provider_request_id=str(message.id),
                 system_prompt=nelson.SYSTEM_PROMPT,
                 user_prompt=user,
-                max_tokens=1024,
+                max_tokens=nelson.MODEL_MAX_TOKENS,
                 temperature=0.0,
             )
             row = nelson.parse_model_result(result, dossier, selected)

@@ -66,10 +66,11 @@ from common import (  # noqa: E402
 )
 
 
-PROMPT_VERSION = "v6"
+PROMPT_VERSION = "v7"
 DOSSIER_SCHEMA_VERSION = "nelson_evidence_dossier_v5"
 RESULT_SCHEMA_VERSION = "nelson_tier_result_v5"
 DEFAULT_MODEL = "claude-sonnet-4-6"
+MODEL_MAX_TOKENS = 2048
 DEFAULT_MAX_EVIDENCE_CHARS = 400_000
 VALID_TIERS = frozenset({"T0", "T1", "T2", "T3"})
 VALID_GENETIC_DIRECTIONS = frozenset(
@@ -121,6 +122,9 @@ Important:
 - Before assigning T0, inspect every record whose deterministic ceiling is
   above T0. If an exact_identifier or exact_text hint on such a record is not
   cited, explain concretely why its disease label is not applicable.
+- Cite the smallest sufficient supporting set, with no more than six records.
+  T2 normally needs two distinct studies and T3 normally needs one qualifying
+  causal record; do not enumerate redundant variants.
 - T2 requires significant coding GWAS evidence replicated across at least two
   distinct study accessions. Multiple variants from one study are not
   replication. Fine-mapping/colocalization is unavailable unless explicitly
@@ -251,6 +255,7 @@ def all_clinical_pairs(cur, limit: int | None = None) -> list[Pair]:
         JOIN preclin.indication i ON i.indication_id = p.indication_id
         WHERE d.is_placebo IS NOT TRUE
           AND (t.pathogen_type IS NULL OR t.pathogen_type = '')
+          AND t.ip_type IS DISTINCT FROM 'Genomic'
         ORDER BY t.id, i.indication_id, d.drug_id
     """
     cur.execute(sql)
@@ -299,7 +304,14 @@ def all_clinical_pairs(cur, limit: int | None = None) -> list[Pair]:
 
 def resolve_pair_ids(cur, gene: str, indication: str) -> Pair:
     cur.execute(
-        "SELECT id, symbol FROM public.targets WHERE upper(symbol) = upper(%s) LIMIT 1",
+        """
+        SELECT id, symbol
+        FROM public.targets
+        WHERE upper(symbol) = upper(%s)
+          AND ip_type IS DISTINCT FROM 'Genomic'
+        ORDER BY (ip_type = 'Protein') DESC, id
+        LIMIT 1
+        """,
         (gene,),
     )
     target = cur.fetchone()
@@ -1104,7 +1116,9 @@ def score_one_pair(
     selected, user = render_model_input(
         dossier, max_evidence_chars=max_evidence_chars
     )
-    result = call_with_retry(client, model, SYSTEM_PROMPT, user, max_tokens=1024)
+    result = call_with_retry(
+        client, model, SYSTEM_PROMPT, user, max_tokens=MODEL_MAX_TOKENS
+    )
     return parse_model_result(result, dossier, selected)
 
 

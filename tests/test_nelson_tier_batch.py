@@ -33,6 +33,7 @@ class NelsonTierBatchTests(unittest.TestCase):
         self.assertEqual(metadata["dossier_sha256"], dossier["dossier_sha256"])
         user = request["params"]["messages"][0]["content"]
         self.assertEqual(metadata["input_sha256"], batch.input_sha256(user))
+        self.assertEqual(request["params"]["max_tokens"], nelson.MODEL_MAX_TOKENS)
 
     def test_batch_price_is_half_standard_price(self):
         cost = batch.batch_cost("claude-sonnet-4-6", 1_000_000, 1_000_000)

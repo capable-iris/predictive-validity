@@ -54,6 +54,8 @@ class NelsonTierClassifierTests(unittest.TestCase):
         self.assertNotIn("approval", sql)
         self.assertNotIn("outcome", sql)
         self.assertNotIn("highest_phase", sql)
+        self.assertIn("ip_type", sql)
+        self.assertIn("genomic", sql)
 
     def test_dossier_and_prompt_preserve_all_documents_when_under_budget(self):
         pair = nelson.Pair(10, "GENE1", 20, "Disease A")
@@ -293,6 +295,7 @@ class NelsonTierClassifierTests(unittest.TestCase):
             "can support T1 without a separate raw GWAS association",
             nelson.USER_TEMPLATE,
         )
+        self.assertIn("no more than six records", nelson.USER_TEMPLATE)
 
 
 if __name__ == "__main__":
