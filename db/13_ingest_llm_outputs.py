@@ -11,6 +11,9 @@ Examples:
     .venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
       --task target-literature data/target_evidence/literature_scores_2026.jsonl
 
+    .venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
+      --task nelson-tier data/target_evidence/nelson_tiers_all_v3.jsonl
+
 Migration ``10_clinical_trial_source_audit.sql`` must be applied first. New
 rows are required to contain the exact audit metadata written by
 ``analyses/classifiers/common.py``. The whole invocation is transactional;
@@ -32,7 +35,13 @@ import psycopg2
 from psycopg2.extras import Json
 
 
-TASKS = ("why-stopped", "target-literature", "silent-kill", "drug-evidence")
+TASKS = (
+    "why-stopped",
+    "target-literature",
+    "silent-kill",
+    "drug-evidence",
+    "nelson-tier",
+)
 REQUIRED_AUDIT_FIELDS = (
     "_run_id",
     "_model",
@@ -116,6 +125,7 @@ def evidence_snapshot(
     *,
     subject_type: str,
     subject_id: int,
+    subject_id2: int | None = None,
     dimension: str,
     category: str,
     source: str,
@@ -123,6 +133,7 @@ def evidence_snapshot(
     model: str,
     value_numeric=None,
     value_text=None,
+    value_json=None,
     confidence=None,
     citation_pmids=None,
 ) -> dict:
@@ -130,13 +141,13 @@ def evidence_snapshot(
     return {
         "subject_type": subject_type,
         "subject_id": subject_id,
-        "subject_id2": None,
+        "subject_id2": subject_id2,
         "dimension": dimension,
         "category": category,
         "value_numeric": value_numeric,
         "value_text": value_text,
         "value_boolean": None,
-        "value_json": None,
+        "value_json": value_json,
         "source": source,
         "source_version": version,
         "confidence": confidence,
@@ -387,6 +398,7 @@ def upsert_evidence(
     *,
     subject_type: str,
     subject_id: int,
+    subject_id2: int | None = None,
     dimension: str,
     category: str,
     source: str,
@@ -395,12 +407,16 @@ def upsert_evidence(
     run_id: str,
     value_numeric=None,
     value_text=None,
+    value_json=None,
     confidence=None,
     citation_pmids=None,
+    citation_details=None,
+    notes=None,
 ) -> int:
     snapshot = evidence_snapshot(
         subject_type=subject_type,
         subject_id=subject_id,
+        subject_id2=subject_id2,
         dimension=dimension,
         category=category,
         source=source,
@@ -408,6 +424,7 @@ def upsert_evidence(
         model=model,
         value_numeric=value_numeric,
         value_text=value_text,
+        value_json=value_json,
         confidence=confidence,
         citation_pmids=citation_pmids,
     )
@@ -415,13 +432,14 @@ def upsert_evidence(
         """
         SELECT evidence_id
         FROM preclin.evidence_score
-        WHERE subject_type = %s AND subject_id = %s AND subject_id2 IS NULL
+        WHERE subject_type = %s AND subject_id = %s
+          AND subject_id2 IS NOT DISTINCT FROM %s
           AND dimension = %s AND source = %s
           AND source_version IS NOT DISTINCT FROM %s
         ORDER BY evidence_id
         LIMIT 1
         """,
-        (subject_type, subject_id, dimension, source, version),
+        (subject_type, subject_id, subject_id2, dimension, source, version),
     )
     existing = cur.fetchone()
     citations = [str(value) for value in (citation_pmids or [])]
@@ -431,17 +449,21 @@ def upsert_evidence(
             """
             UPDATE preclin.evidence_score
             SET category = %s, value_numeric = %s, value_text = %s,
-                value_boolean = NULL, confidence = %s, citation_pmids = %s,
-                extracted_by = %s, extracted_at = now()
+                value_boolean = NULL, value_json = %s, confidence = %s,
+                citation_pmids = %s, citation_details = %s,
+                extracted_by = %s, notes = %s, extracted_at = now()
             WHERE evidence_id = %s
             """,
             (
                 category,
                 value_numeric,
                 value_text,
+                Json(value_json) if value_json is not None else None,
                 confidence,
                 citations,
+                Json(citation_details) if citation_details is not None else None,
                 model,
+                notes,
                 evidence_id,
             ),
         )
@@ -450,23 +472,28 @@ def upsert_evidence(
             """
             INSERT INTO preclin.evidence_score
               (subject_type, subject_id, subject_id2, dimension, category,
-               value_numeric, value_text, source, source_version, confidence,
-               citation_pmids, extracted_by)
-            VALUES (%s, %s, NULL, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               value_numeric, value_text, value_json, source, source_version,
+               confidence, citation_pmids, citation_details, extracted_by, notes)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s)
             RETURNING evidence_id
             """,
             (
                 subject_type,
                 subject_id,
+                subject_id2,
                 dimension,
                 category,
                 value_numeric,
                 value_text,
+                Json(value_json) if value_json is not None else None,
                 source,
                 version,
                 confidence,
                 citations,
+                Json(citation_details) if citation_details is not None else None,
                 model,
+                notes,
             ),
         )
         evidence_id = cur.fetchone()[0]
@@ -565,6 +592,77 @@ def ingest_row(cur, task: str, row: dict) -> tuple[int, int]:
             )
             facts += 1
         return 0, facts
+
+    if task == "nelson-tier":
+        if row.get("schema_version") != "nelson_tier_result_v3":
+            raise ValueError("nelson-tier row must use nelson_tier_result_v3")
+        tier = str(row.get("tier") or "").upper()
+        if tier not in {"T0", "T1", "T2", "T3", "T4"}:
+            raise ValueError(f"invalid Nelson tier: {tier!r}")
+        try:
+            target_id = int(row["target_id"])
+            indication_id = int(row["indication_id"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("nelson-tier row needs target_id and indication_id") from exc
+        cur.execute(
+            """
+            SELECT t.symbol, i.display_name
+            FROM public.targets t
+            CROSS JOIN preclin.indication i
+            WHERE t.id = %s AND t.ip_type != 'Genomic'
+              AND i.indication_id = %s
+            """,
+            (target_id, indication_id),
+        )
+        resolved = cur.fetchone()
+        if not resolved:
+            raise ValueError(
+                f"unknown target-indication IDs: {target_id}:{indication_id}"
+            )
+        gene, indication = resolved
+        if row.get("gene") and str(row["gene"]).upper() != str(gene).upper():
+            raise ValueError(f"target_id {target_id} does not resolve to {row['gene']}")
+        pair_key = f"{target_id}:{indication_id}"
+        if row.get("pair_key") != pair_key:
+            raise ValueError(f"nelson-tier pair_key must be {pair_key}")
+        sources = row.get("_source_documents")
+        if not isinstance(sources, list):
+            raise ValueError("nelson-tier row must include _source_documents")
+        if sources:
+            require_source_inputs(row, task)
+        run_id = insert_run(cur, row, "target_indication", pair_key, "nelson_tier")
+        details = {
+            "schema_version": row["schema_version"],
+            "pair_key": pair_key,
+            "gene": gene,
+            "indication": indication,
+            "direction_concordance": row.get("direction_concordance"),
+            "disease_match": row.get("disease_match"),
+            "evidence_variants": row.get("evidence_variants") or [],
+            "evidence_url": row.get("evidence_url") or "",
+            "dossier_sha256": row.get("dossier_sha256"),
+            "dossier_file": row.get("_dossier_file"),
+            "evidence_counts": row.get("evidence_counts") or {},
+            "prompt_selection": row.get("prompt_selection") or {},
+        }
+        upsert_evidence(
+            cur,
+            subject_type="target_indication",
+            subject_id=target_id,
+            subject_id2=indication_id,
+            dimension="nelson_tier",
+            category="A_genetics",
+            source="nelson_llm",
+            version=row["_prompt_version"],
+            model=row["_model"],
+            run_id=run_id,
+            value_text=tier,
+            value_json=details,
+            citation_pmids=row.get("supporting_pmids") or [],
+            citation_details={"dossier_sha256": row.get("dossier_sha256")},
+            notes=str(row.get("rationale") or "")[:2000],
+        )
+        return 0, 1
 
     drug_name = str(row.get("drug") or "").strip()
     if not drug_name:

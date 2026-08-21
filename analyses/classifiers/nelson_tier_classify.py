@@ -12,29 +12,31 @@ validation are complete.
 Examples::
 
     # Free/read-only preparation: enumerate all clinical pairs and save every
-    # structured evidence row and cached PubMed abstract retrieved.
+    # structured evidence row and canonical PubMed document retrieved.
     .venv/bin/dotenv run -- .venv/bin/python \
       analyses/classifiers/nelson_tier_classify.py \
       --all-clinical --prepare-only \
-      --out data/target_evidence/nelson_tiers_all_v2.jsonl
+      --out data/target_evidence/nelson_tiers_all_v3.jsonl
 
     # Paid scoring pass over the already prepared dossiers. This requires
     # explicit approval before it is run.
     .venv/bin/dotenv run -- .venv/bin/python \
       analyses/classifiers/nelson_tier_classify.py \
       --all-clinical \
-      --out data/target_evidence/nelson_tiers_all_v2.jsonl
+      --out data/target_evidence/nelson_tiers_all_v3.jsonl
 
     # Score selected pairs instead.
     .venv/bin/dotenv run -- .venv/bin/python \
       analyses/classifiers/nelson_tier_classify.py \
       --pair UNC13A:ALS --pair NTRK2:Alzheimer \
-      --out data/target_evidence/nelson_tiers_selected_v2.jsonl
+      --out data/target_evidence/nelson_tiers_selected_v3.jsonl
 
 By default, dossiers are written beside ``--out`` as
-``<stem>.dossiers.jsonl``. If ``--abstracts-cache-dir`` is supplied, every
-valid abstract in ``<cache>/<GENE>.jsonl`` is preserved verbatim in the
-dossier; only a bounded subset is sent to the LLM.
+``<stem>.dossiers.jsonl``. PubMed records are read from the immutable
+``preclin.source_document`` store populated by
+``db/12_ingest_evidence_abstracts.py``. Dossiers preserve every row; normally
+all evidence is sent to the model, with deterministic overflow selection only
+for the unusually large tail.
 """
 from __future__ import annotations
 
@@ -42,13 +44,8 @@ import argparse
 import csv
 import hashlib
 import json
-import os
 import re
 import sys
-import time
-import urllib.parse
-import urllib.request
-import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -68,12 +65,14 @@ from common import (  # noqa: E402
 )
 
 
-PROMPT_VERSION = "v2"
-DOSSIER_SCHEMA_VERSION = "nelson_evidence_dossier_v2"
-RESULT_SCHEMA_VERSION = "nelson_tier_result_v2"
+PROMPT_VERSION = "v3"
+DOSSIER_SCHEMA_VERSION = "nelson_evidence_dossier_v3"
+RESULT_SCHEMA_VERSION = "nelson_tier_result_v3"
 DEFAULT_MODEL = "claude-sonnet-4-6"
+DEFAULT_MAX_EVIDENCE_CHARS = 400_000
 VALID_TIERS = frozenset({"T0", "T1", "T2", "T3", "T4"})
 VALID_DIRECTIONS = frozenset({"concordant", "discordant", "unclear"})
+VALID_DISEASE_MATCHES = frozenset({"exact", "related", "unmatched", "unclear"})
 
 # This remains the repository's historical T0-T4 convention. The prompt no
 # longer claims that Nelson et al. published this exact ordinal ladder.
@@ -357,20 +356,6 @@ def fetch_target_evidence(cur, target_id: int | None) -> dict[str, list[dict[str
     }
 
 
-def load_cached_abstracts(cache_dir: Path | None, gene: str) -> list[dict[str, Any]]:
-    """Load and preserve every valid cached abstract for a gene."""
-    if cache_dir is None:
-        return []
-    path = cache_dir / f"{gene}.jsonl"
-    if not path.exists():
-        return []
-    abstracts: list[dict[str, Any]] = []
-    for row in read_jsonl(path):
-        if row.get("pmid") and (row.get("title") or row.get("abstract")):
-            abstracts.append(json_safe(row))
-    return abstracts
-
-
 def cited_pmids(evidence: dict[str, list[dict[str, Any]]]) -> list[str]:
     """Collect every PubMed identifier referenced by structured evidence."""
     values: list[Any] = []
@@ -390,108 +375,78 @@ def cited_pmids(evidence: dict[str, list[dict[str, Any]]]) -> list[str]:
     )
 
 
-def _element_text(element) -> str:
-    if element is None:
-        return ""
-    return "".join(element.itertext()).strip()
-
-
-def parse_pubmed_xml(payload: bytes) -> list[dict[str, Any]]:
-    """Parse full PubMed citation metadata and abstracts returned by EFetch."""
-    root = ET.fromstring(payload)
-    records: list[dict[str, Any]] = []
-    for item in root.findall(".//PubmedArticle"):
-        citation = item.find("MedlineCitation")
-        article = citation.find("Article") if citation is not None else None
-        pmid = _element_text(citation.find("PMID") if citation is not None else None)
-        if not pmid:
-            continue
-        abstract_sections = []
-        if article is not None:
-            for abstract in article.findall("./Abstract/AbstractText"):
-                text = _element_text(abstract)
-                label = abstract.attrib.get("Label") or abstract.attrib.get("NlmCategory")
-                abstract_sections.append(f"{label}: {text}" if label and text else text)
-        article_ids = {}
-        for article_id in item.findall("./PubmedData/ArticleIdList/ArticleId"):
-            id_type = article_id.attrib.get("IdType")
-            if id_type:
-                article_ids[id_type] = _element_text(article_id)
-        journal = article.find("Journal") if article is not None else None
-        records.append(
-            {
-                "pmid": pmid,
-                "title": _element_text(article.find("ArticleTitle") if article is not None else None),
-                "abstract": "\n".join(section for section in abstract_sections if section),
-                "abstract_copyright": _element_text(
-                    article.find("./Abstract/CopyrightInformation")
-                    if article is not None else None
-                ),
-                "journal": _element_text(journal.find("Title") if journal is not None else None),
-                "publication_date": _element_text(
-                    journal.find("./JournalIssue/PubDate") if journal is not None else None
-                ),
-                "publication_types": [
-                    _element_text(value)
-                    for value in (article.findall("./PublicationTypeList/PublicationType") if article is not None else [])
-                ],
-                "article_ids": article_ids,
-                "source_url": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
-                "retrieved_via": "NCBI EFetch",
-            }
-        )
-    return records
-
-
-def fetch_pubmed_records(
-    pmids: list[str],
-    email: str,
-    api_key: str | None = None,
-    batch_size: int = 200,
+def fetch_pubmed_documents(
+    cur,
+    gene: str,
+    structured_citations: list[str],
 ) -> list[dict[str, Any]]:
-    """Fetch cited PubMed records in policy-compliant EFetch batches."""
-    records: list[dict[str, Any]] = []
-    delay = 0.11 if api_key else 0.34
-    for start in range(0, len(pmids), batch_size):
-        batch = pmids[start : start + batch_size]
-        params = {
-            "db": "pubmed",
-            "id": ",".join(batch),
-            "retmode": "xml",
-            "tool": "predictive_validity_nelson_tiers",
-            "email": email,
-        }
-        if api_key:
-            params["api_key"] = api_key
-        url = (
-            "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?"
-            + urllib.parse.urlencode(params)
+    """Load the latest immutable PubMed snapshots linked or cited here.
+
+    Target-linked documents cover imported per-gene caches. The PMID predicate
+    also picks up a canonical document cited by GWAS or Open Targets even when
+    an older import omitted its target-subject link.
+    """
+    cur.execute(
+        """
+        SELECT to_regclass('preclin.source_document'),
+               to_regclass('preclin.source_document_subject')
+        """
+    )
+    if any(value is None for value in cur.fetchone()):
+        raise RuntimeError(
+            "apply db/10_clinical_trial_source_audit.sql and import PubMed "
+            "records with db/12_ingest_evidence_abstracts.py first"
         )
-        with urllib.request.urlopen(url, timeout=60) as response:
-            records.extend(parse_pubmed_xml(response.read()))
-        if start + batch_size < len(pmids):
-            time.sleep(delay)
-    return records
-
-
-def merge_abstracts(*groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Deduplicate literature by PMID while preserving the first full record."""
-    merged: dict[str, dict[str, Any]] = {}
-    for group in groups:
-        for row in group:
-            pmid = str(row.get("pmid") or "").strip()
-            if pmid and pmid not in merged:
-                merged[pmid] = json_safe(row)
-    return list(merged.values())
+    cur.execute(
+        """
+        SELECT DISTINCT ON (sd.external_id)
+               sd.source_document_id,
+               sd.external_id AS pmid,
+               sd.title,
+               sd.abstract_text AS abstract,
+               sd.source_version,
+               sd.source_url,
+               sd.content_sha256,
+               sd.source_updated_at,
+               sd.retrieved_at,
+               EXISTS (
+                 SELECT 1
+                 FROM preclin.source_document_subject linked
+                 WHERE linked.source_document_id = sd.source_document_id
+                   AND linked.subject_type = 'target'
+                   AND upper(linked.subject_key) = upper(%s)
+               ) AS linked_to_target,
+               sd.external_id = ANY(%s) AS cited_by_structured_evidence
+        FROM preclin.source_document sd
+        WHERE sd.source_name = 'pubmed'
+          AND sd.abstract_text IS NOT NULL
+          AND (
+            sd.external_id = ANY(%s)
+            OR EXISTS (
+              SELECT 1
+              FROM preclin.source_document_subject linked
+              WHERE linked.source_document_id = sd.source_document_id
+                AND linked.subject_type = 'target'
+                AND upper(linked.subject_key) = upper(%s)
+            )
+          )
+        ORDER BY sd.external_id,
+                 sd.source_updated_at DESC NULLS LAST,
+                 sd.retrieved_at DESC,
+                 sd.source_document_id DESC
+        """,
+        (gene, structured_citations, structured_citations, gene),
+    )
+    return _rows_as_dicts(cur)
 
 
 def build_dossier(
     pair: Pair,
     target_evidence: dict[str, list[dict[str, Any]]],
-    abstracts: list[dict[str, Any]],
+    pubmed_documents: list[dict[str, Any]],
 ) -> dict[str, Any]:
     evidence = dict(target_evidence)
-    evidence["pubmed_abstracts"] = abstracts
+    evidence["pubmed_documents"] = pubmed_documents
     return {
         "schema_version": DOSSIER_SCHEMA_VERSION,
         "pair_key": pair.key,
@@ -515,76 +470,156 @@ def indication_tokens(indication: str) -> set[str]:
     }
 
 
-def _record_matches_indication(record: dict[str, Any], tokens: set[str]) -> bool:
+def _compact_size(value: Any) -> int:
+    return len(json.dumps(value, sort_keys=True, separators=(",", ":")))
+
+
+def _overflow_rank(record: dict[str, Any], tokens: set[str]) -> tuple[int, int]:
+    """Rank only when a dossier exceeds the explicit prompt budget."""
     if not tokens:
-        return False
+        return (2, 0)
     text = " ".join(
-        str(record.get(k) or "")
-        for k in (
+        str(record.get(key) or "")
+        for key in (
             "phenotype_name", "disease_name", "trait", "evidence_detail",
             "title", "abstract",
         )
     ).lower()
-    return bool(tokens & set(re.findall(r"[a-z0-9]+", text)))
+    words = set(re.findall(r"[a-z0-9]+", text))
+    overlap = len(tokens & words)
+    if overlap == len(tokens):
+        return (0, -overlap)
+    if overlap:
+        return (1, -overlap)
+    return (2, 0)
 
 
-def prompt_evidence(dossier: dict[str, Any]) -> dict[str, Any]:
-    """Bound prompt size without discarding anything from the saved dossier."""
+def prompt_evidence(
+    dossier: dict[str, Any],
+    max_chars: int = DEFAULT_MAX_EVIDENCE_CHARS,
+) -> dict[str, Any]:
+    """Send all evidence when it fits; trim only the oversized tail."""
+    if max_chars <= 0:
+        raise ValueError("max_chars must be positive")
     tokens = indication_tokens(dossier["pair"]["indication"])
     evidence = dossier["evidence"]
-    limits = {
-        "mendelian_associations": 40,
-        "clingen_validity": 30,
-        "gwas_associations": 50,
-        "open_targets_evidence": 40,
-    }
-    selected: dict[str, Any] = {}
-    for name, limit in limits.items():
-        rows = evidence.get(name, [])
-        matched = [r for r in rows if _record_matches_indication(r, tokens)]
-        unmatched = [r for r in rows if r not in matched]
-        selected[name] = (matched + unmatched)[:limit]
+    selected = {name: list(rows) for name, rows in evidence.items()}
+    full_size = _compact_size(selected)
+    if full_size <= max_chars:
+        selected["selection_summary"] = {
+            "overflow": False,
+            "full_evidence_chars": full_size,
+            "max_evidence_chars": max_chars,
+            "saved": dossier["evidence_counts"],
+            "sent": dossier["evidence_counts"],
+            "dropped": {name: 0 for name in evidence},
+        }
+        return selected
 
-    # Full abstracts remain in the dossier. A bounded subset goes to the model;
-    # no abstract is truncated in the audit artifact.
-    abstracts = evidence.get("pubmed_abstracts", [])
-    matched_abstracts = [
-        row for row in abstracts if _record_matches_indication(row, tokens)
-    ]
-    unmatched_abstracts = [row for row in abstracts if row not in matched_abstracts]
-    selected["pubmed_abstracts"] = []
-    for row in (matched_abstracts + unmatched_abstracts)[:20]:
-        prompt_row = dict(row)
-        prompt_row["abstract"] = str(prompt_row.get("abstract") or "")[:2500]
-        selected["pubmed_abstracts"].append(prompt_row)
-    selected["saved_evidence_counts"] = dossier["evidence_counts"]
+    # Preserve the smaller/high-specificity sources first. GWAS and Open
+    # Targets are the sources responsible for the observed long tail.
+    priority_names = (
+        "mendelian_associations",
+        "clingen_validity",
+        "pubmed_documents",
+    )
+    tail_names = ("gwas_associations", "open_targets_evidence")
+    ordered_names = priority_names + tail_names
+    selected = {name: [] for name in ordered_names}
+    used = _compact_size(selected)
+    for name in priority_names:
+        ranked = sorted(
+            enumerate(evidence.get(name, [])),
+            key=lambda item: (*_overflow_rank(item[1], tokens), item[0]),
+        )
+        for _, record in ranked:
+            record_size = _compact_size(record) + 2
+            if used + record_size > max_chars:
+                continue
+            selected[name].append(record)
+            used += record_size
+    ranked_tail = {
+        name: sorted(
+            enumerate(evidence.get(name, [])),
+            key=lambda item: (*_overflow_rank(item[1], tokens), item[0]),
+        )
+        for name in tail_names
+    }
+    positions = {name: 0 for name in tail_names}
+    while any(positions[name] < len(ranked_tail[name]) for name in tail_names):
+        for name in tail_names:
+            position = positions[name]
+            if position >= len(ranked_tail[name]):
+                continue
+            _, record = ranked_tail[name][position]
+            positions[name] += 1
+            record_size = _compact_size(record) + 2
+            if used + record_size <= max_chars:
+                selected[name].append(record)
+                used += record_size
+    sent = {name: len(selected.get(name, [])) for name in evidence}
+    selected["selection_summary"] = {
+        "overflow": True,
+        "overflow_ordering": "indication-term overlap; model adjudicates disease match",
+        "full_evidence_chars": full_size,
+        "max_evidence_chars": max_chars,
+        "saved": dossier["evidence_counts"],
+        "sent": sent,
+        "dropped": {
+            name: dossier["evidence_counts"][name] - sent[name]
+            for name in evidence
+        },
+    }
     return selected
 
 
-def score_one_pair(client, dossier: dict[str, Any], model: str) -> dict[str, Any]:
+def score_one_pair(
+    client,
+    dossier: dict[str, Any],
+    model: str,
+    max_evidence_chars: int = DEFAULT_MAX_EVIDENCE_CHARS,
+) -> dict[str, Any]:
     pair = dossier["pair"]
+    selected = prompt_evidence(dossier, max_chars=max_evidence_chars)
+    selected_documents = selected.get("pubmed_documents", [])
+    missing_source_ids = [
+        str(document.get("pmid") or "<unknown>")
+        for document in selected_documents
+        if not isinstance(document.get("source_document_id"), int)
+    ]
+    if missing_source_ids:
+        raise ValueError(
+            "refusing to call a paid model with non-canonical PubMed records; "
+            "import them with db/12_ingest_evidence_abstracts.py first "
+            f"(missing source_document_id for {', '.join(missing_source_ids[:5])})"
+        )
     user = USER_TEMPLATE.format(
         gene=pair["gene"],
         indication=pair["indication"],
-        evidence_json=json.dumps(prompt_evidence(dossier), indent=2, sort_keys=True),
+        evidence_json=json.dumps(selected, indent=2, sort_keys=True),
     )
     result = call_with_retry(client, model, SYSTEM_PROMPT, user, max_tokens=1024)
     row = extract_json_block(result.text)
     tier = str(row.get("tier", "")).upper()
     direction = str(row.get("direction_concordance", "")).lower()
+    disease_match = str(row.get("disease_match", "")).lower()
     if tier not in VALID_TIERS:
         raise ValueError(f"invalid tier returned: {tier!r}")
     if direction not in VALID_DIRECTIONS:
         raise ValueError(f"invalid direction_concordance returned: {direction!r}")
+    if disease_match not in VALID_DISEASE_MATCHES:
+        raise ValueError(f"invalid disease_match returned: {disease_match!r}")
+    if tier == "T4" and direction != "concordant":
+        raise ValueError("T4 requires concordant intervention direction")
     reported_pmids = {
         match.group(0)
         for value in (row.get("supporting_pmids") or [])
         for match in [re.search(r"\d+", str(value))]
         if match
     }
-    allowed_pmids = set(cited_pmids(dossier["evidence"])) | {
+    allowed_pmids = set(cited_pmids(selected)) | {
         str(record.get("pmid"))
-        for record in dossier["evidence"].get("pubmed_abstracts", [])
+        for record in selected_documents
         if record.get("pmid")
     }
     unsupported = reported_pmids - allowed_pmids
@@ -601,11 +636,23 @@ def score_one_pair(client, dossier: dict[str, Any], model: str) -> dict[str, Any
             "indication": pair["indication"],
             "tier": tier,
             "direction_concordance": direction,
+            "disease_match": disease_match,
             "dossier_sha256": dossier_sha256(dossier),
             "evidence_counts": dossier["evidence_counts"],
+            "prompt_selection": selected["selection_summary"],
         }
     )
-    return annotate(row, result, PROMPT_VERSION)
+    annotate(row, result, PROMPT_VERSION)
+    row["_source_documents"] = [
+        {
+            "source_document_id": document["source_document_id"],
+            "relationship": "pubmed_abstract_input",
+            "ordinal": ordinal,
+            "excerpt_text": str(document.get("abstract") or ""),
+        }
+        for ordinal, document in enumerate(selected_documents)
+    ]
+    return row
 
 
 def default_dossiers_path(out: Path) -> Path:
@@ -633,27 +680,17 @@ def parse_args(argv: Iterable[str] | None = None):
         help="Full evidence-dossier JSONL (default: beside --out)",
     )
     ap.add_argument(
-        "--abstracts-cache-dir",
-        type=Path,
-        default=None,
-        help="Optional directory of <GENE>.jsonl PubMed abstract caches",
-    )
-    ap.add_argument(
-        "--fetch-cited-pubmed",
-        action="store_true",
-        help="Fetch and save PubMed records cited by GWAS/Open Targets evidence",
-    )
-    ap.add_argument(
-        "--ncbi-email",
-        default=None,
-        help="Contact email required by NCBI when --fetch-cited-pubmed is used",
-    )
-    ap.add_argument(
         "--prepare-only",
         action="store_true",
         help="Save all evidence dossiers without making paid LLM calls",
     )
     ap.add_argument("--limit", type=int, default=None, help="Cap pairs for a batch")
+    ap.add_argument(
+        "--max-evidence-chars",
+        type=int,
+        default=DEFAULT_MAX_EVIDENCE_CHARS,
+        help="Overflow budget for serialized evidence (default: 400000)",
+    )
     ap.add_argument("--model", default=DEFAULT_MODEL)
     return ap.parse_args(argv)
 
@@ -661,11 +698,6 @@ def parse_args(argv: Iterable[str] | None = None):
 def main(argv: Iterable[str] | None = None) -> None:
     args = parse_args(argv)
     dossiers_path = args.dossiers_out or default_dossiers_path(args.out)
-    ncbi_email = args.ncbi_email or os.environ.get("NCBI_EMAIL")
-    if args.fetch_cited_pubmed and not ncbi_email:
-        raise SystemExit(
-            "--fetch-cited-pubmed requires --ncbi-email or NCBI_EMAIL"
-        )
 
     conn = db_conn()
     cur = conn.cursor()
@@ -685,8 +717,7 @@ def main(argv: Iterable[str] | None = None) -> None:
     client = None if args.prepare_only else get_client()
     cached_target_id: int | None = None
     cached_target_evidence: dict[str, list[dict[str, Any]]] | None = None
-    cached_gene: str | None = None
-    cached_abstracts: list[dict[str, Any]] = []
+    cached_documents: list[dict[str, Any]] = []
     total_cost = 0.0
 
     for index, pair in enumerate(todo, start=1):
@@ -699,26 +730,13 @@ def main(argv: Iterable[str] | None = None) -> None:
             if pair.target_id != cached_target_id or cached_target_evidence is None:
                 cached_target_id = pair.target_id
                 cached_target_evidence = fetch_target_evidence(cur, pair.target_id)
-            if pair.gene != cached_gene:
-                cached_gene = pair.gene
-                cached = load_cached_abstracts(
-                    args.abstracts_cache_dir, pair.gene
+                cached_documents = fetch_pubmed_documents(
+                    cur,
+                    pair.gene,
+                    cited_pmids(cached_target_evidence),
                 )
-                fetched: list[dict[str, Any]] = []
-                if args.fetch_cited_pubmed:
-                    present = {str(row.get("pmid")) for row in cached}
-                    missing = [
-                        pmid for pmid in cited_pmids(cached_target_evidence)
-                        if pmid not in present
-                    ]
-                    fetched = fetch_pubmed_records(
-                        missing,
-                        email=ncbi_email,
-                        api_key=os.environ.get("NCBI_API_KEY"),
-                    )
-                cached_abstracts = merge_abstracts(cached, fetched)
             dossier = build_dossier(
-                pair, cached_target_evidence, cached_abstracts
+                pair, cached_target_evidence, cached_documents
             )
             append_jsonl(dossiers_path, dossier)
 
@@ -732,7 +750,12 @@ def main(argv: Iterable[str] | None = None) -> None:
             continue
 
         try:
-            row = score_one_pair(client, dossier, args.model)
+            row = score_one_pair(
+                client,
+                dossier,
+                args.model,
+                max_evidence_chars=args.max_evidence_chars,
+            )
         except Exception as exc:
             print(
                 f"  [{index}/{len(todo)}] {pair.gene}:{pair.indication} FAILED: {exc}",

@@ -90,6 +90,24 @@ class SourceAuditTests(unittest.TestCase):
         self.assertEqual(snapshot["subject_id2"], None)
         self.assertEqual(snapshot["extracted_by"], "test-model")
 
+    def test_nelson_snapshot_preserves_pair_key_and_details(self):
+        snapshot = ingest.evidence_snapshot(
+            subject_type="target_indication",
+            subject_id=42,
+            subject_id2=7,
+            dimension="nelson_tier",
+            category="A_genetics",
+            source="nelson_llm",
+            version="v3",
+            model="test-model",
+            value_text="T3",
+            value_json={"dossier_sha256": "abc"},
+        )
+        self.assertIn("nelson-tier", ingest.TASKS)
+        self.assertEqual(snapshot["subject_id2"], 7)
+        self.assertEqual(snapshot["value_text"], "T3")
+        self.assertEqual(snapshot["value_json"], {"dossier_sha256": "abc"})
+
     def test_canonical_abstract_produces_complete_source_links(self):
         row = scorer.score_one_target(
             FakeClient(),

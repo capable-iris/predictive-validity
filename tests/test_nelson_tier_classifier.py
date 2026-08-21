@@ -1,15 +1,12 @@
-"""Regression tests for cohort-wide Nelson-tier preparation and ingestion."""
+"""Regression tests for cohort-wide Nelson-tier preparation."""
 from __future__ import annotations
 
 import json
-import tempfile
 import unittest
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from analyses.classifiers import nelson_tier_classify as nelson
-from db import nelson_tier_io
 
 
 class FakePairCursor:
@@ -42,7 +39,7 @@ class NelsonTierClassifierTests(unittest.TestCase):
         self.assertNotIn("outcome", sql)
         self.assertNotIn("highest_phase", sql)
 
-    def test_dossier_preserves_all_abstracts_while_prompt_is_bounded(self):
+    def test_dossier_and_prompt_preserve_all_documents_when_under_budget(self):
         pair = nelson.Pair(10, "GENE1", 20, "Disease A")
         structured = {
             "mendelian_associations": [],
@@ -50,29 +47,38 @@ class NelsonTierClassifierTests(unittest.TestCase):
             "gwas_associations": [],
             "open_targets_evidence": [],
         }
-        abstracts = [
-            {"pmid": str(i), "title": f"Title {i}", "abstract": "full text"}
+        documents = [
+            {
+                "source_document_id": i,
+                "pmid": str(i),
+                "title": f"Title {i}",
+                "abstract": "full text",
+            }
             for i in range(25)
         ]
-        dossier = nelson.build_dossier(pair, structured, abstracts)
-        self.assertEqual(len(dossier["evidence"]["pubmed_abstracts"]), 25)
-        self.assertEqual(dossier["evidence_counts"]["pubmed_abstracts"], 25)
-        self.assertEqual(len(nelson.prompt_evidence(dossier)["pubmed_abstracts"]), 20)
+        dossier = nelson.build_dossier(pair, structured, documents)
+        prompt = nelson.prompt_evidence(dossier)
+        self.assertEqual(len(dossier["evidence"]["pubmed_documents"]), 25)
+        self.assertEqual(dossier["evidence_counts"]["pubmed_documents"], 25)
+        self.assertEqual(len(prompt["pubmed_documents"]), 25)
+        self.assertFalse(prompt["selection_summary"]["overflow"])
 
-    def test_prompt_prioritizes_indication_matched_records(self):
+    def test_only_overflow_uses_indication_terms_for_ordering(self):
         pair = nelson.Pair(10, "GENE1", 20, "Psoriasis")
         structured = {
             "mendelian_associations": [],
             "clingen_validity": [],
             "gwas_associations": [
-                {"trait": "height"},
-                {"trait": "psoriasis susceptibility"},
-            ],
+                {"trait": f"height record {index}", "context": "x" * 100}
+                for index in range(20)
+            ] + [{"trait": "psoriasis susceptibility", "context": "x" * 100}],
             "open_targets_evidence": [],
         }
         dossier = nelson.build_dossier(pair, structured, [])
-        prompt = nelson.prompt_evidence(dossier)
+        prompt = nelson.prompt_evidence(dossier, max_chars=600)
+        self.assertTrue(prompt["selection_summary"]["overflow"])
         self.assertEqual(prompt["gwas_associations"][0]["trait"], "psoriasis susceptibility")
+        self.assertGreater(prompt["selection_summary"]["dropped"]["gwas_associations"], 0)
 
     def test_cited_pmids_collects_gwas_and_open_targets_references(self):
         evidence = {
@@ -80,21 +86,6 @@ class NelsonTierClassifierTests(unittest.TestCase):
             "open_targets_evidence": [{"key_pmids": ["456", "123"]}],
         }
         self.assertEqual(nelson.cited_pmids(evidence), ["123", "456"])
-
-    def test_pubmed_xml_parser_preserves_abstract_and_ids(self):
-        payload = b"""<PubmedArticleSet><PubmedArticle>
-          <MedlineCitation><PMID>123</PMID><Article>
-            <ArticleTitle>A genetics study</ArticleTitle>
-            <Abstract><AbstractText Label="BACKGROUND">Full abstract text.</AbstractText></Abstract>
-            <Journal><Title>Example Journal</Title><JournalIssue><PubDate><Year>2025</Year></PubDate></JournalIssue></Journal>
-            <PublicationTypeList><PublicationType>Journal Article</PublicationType></PublicationTypeList>
-          </Article></MedlineCitation>
-          <PubmedData><ArticleIdList><ArticleId IdType="doi">10.1/example</ArticleId></ArticleIdList></PubmedData>
-        </PubmedArticle></PubmedArticleSet>"""
-        records = nelson.parse_pubmed_xml(payload)
-        self.assertEqual(records[0]["pmid"], "123")
-        self.assertEqual(records[0]["abstract"], "BACKGROUND: Full abstract text.")
-        self.assertEqual(records[0]["article_ids"]["doi"], "10.1/example")
 
     def test_model_cannot_cite_literature_absent_from_dossier(self):
         pair = nelson.Pair(10, "GENE1", 20, "Disease A")
@@ -113,6 +104,7 @@ class NelsonTierClassifierTests(unittest.TestCase):
                 {
                     "tier": "T1",
                     "direction_concordance": "unclear",
+                    "disease_match": "unclear",
                     "supporting_pmids": ["999"],
                 }
             ),
@@ -125,33 +117,49 @@ class NelsonTierClassifierTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "absent from dossier"):
                 nelson.score_one_pair(object(), dossier, "test-model")
 
-    def test_result_discovery_excludes_dossier_sidecars(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            result = root / "nelson_tiers_all_v2.jsonl"
-            dossier = root / "nelson_tiers_all_v2.dossiers.jsonl"
-            result.write_text("\n")
-            dossier.write_text("\n")
-            self.assertEqual(nelson_tier_io.result_files(root), [result])
-
-    def test_ingest_parser_validates_and_normalizes_results(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "nelson_tiers_test.jsonl"
-            path.write_text(
-                json.dumps(
-                    {
-                        "schema_version": "nelson_tier_result_v2",
-                        "target_id": 10,
-                        "indication_id": 20,
-                        "tier": "t3",
-                        "supporting_pmids": [123, "123", "456"],
-                    }
-                )
-                + "\n"
-            )
-            rows = list(nelson_tier_io.iter_tier_results([path]))
-        self.assertEqual(rows[0]["tier"], "T3")
-        self.assertEqual(rows[0]["supporting_pmids"], ["123", "456"])
+    def test_canonical_prompt_documents_are_linked_to_the_model_run(self):
+        pair = nelson.Pair(10, "GENE1", 20, "Disease A")
+        dossier = nelson.build_dossier(
+            pair,
+            {
+                "mendelian_associations": [],
+                "clingen_validity": [],
+                "gwas_associations": [],
+                "open_targets_evidence": [],
+            },
+            [{
+                "source_document_id": 99,
+                "pmid": "123",
+                "title": "Title",
+                "abstract": "Exact abstract text",
+            }],
+        )
+        response = SimpleNamespace(
+            text=json.dumps({
+                "tier": "T1",
+                "direction_concordance": "unclear",
+                "disease_match": "related",
+                "supporting_pmids": ["123"],
+            }),
+            model="test-model",
+            provider_request_id="request-1",
+            system_prompt=nelson.SYSTEM_PROMPT,
+            user_prompt="rendered prompt",
+            max_tokens=1024,
+            temperature=0.0,
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0,
+        )
+        with patch.object(nelson, "call_with_retry", return_value=response):
+            row = nelson.score_one_pair(object(), dossier, "test-model")
+        self.assertEqual(row["schema_version"], "nelson_tier_result_v3")
+        self.assertEqual(row["_source_documents"], [{
+            "source_document_id": 99,
+            "relationship": "pubmed_abstract_input",
+            "ordinal": 0,
+            "excerpt_text": "Exact abstract text",
+        }])
 
 
 if __name__ == "__main__":

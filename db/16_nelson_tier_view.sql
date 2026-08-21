@@ -1,4 +1,4 @@
--- Migrate the existing master program view to cohort-wide Nelson v2 tiers.
+-- Migrate the existing master program view to audited cohort-wide Nelson tiers.
 --
 -- CREATE OR REPLACE preserves dependent views. Do not rerun 03_views.sql on
 -- an established database: its bootstrap DROP ... CASCADE statements would

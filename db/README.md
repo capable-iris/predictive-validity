@@ -58,20 +58,25 @@ still verified.
 
 `analyses/classifiers/nelson_tier_classify.py --all-clinical` enumerates all
 non-placebo human target-indication pairs from program and drug-target tables,
-without reading outcomes or approvals. Versioned score files under
-`data/target_evidence/nelson_tiers_*.jsonl` are ingested by `02_ingest.py` as
-source `nelson_llm`. Adjacent `*.dossiers.jsonl` files are audit artifacts and
-are never mistaken for scores. `03_views.sql` exposes only the newest
+without reading outcomes or approvals. It reads PubMed only from immutable
+`preclin.source_document` rows and writes exact model inputs in the standard
+audit format. Versioned result files are ingested by
+`13_ingest_llm_outputs.py --task nelson-tier`, which atomically stores the
+`llm_run`, `llm_run_source`, `evidence_score`, and immutable fact snapshot.
+Adjacent `*.dossiers.jsonl` files are untruncated audit artifacts and are not
+database inputs. `03_views.sql` exposes only the newest
 cohort-wide `nelson_llm` row; legacy approval-derived tiers remain in the long
 table for audit but cannot populate the canonical view.
 
 For an incremental ingest, validate first and then commit only these rows:
 
 ```bash
-.venv/bin/dotenv run -- .venv/bin/python db/15_ingest_nelson_tiers.py --dry-run
-.venv/bin/dotenv run -- .venv/bin/python db/15_ingest_nelson_tiers.py
+.venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
+  --task nelson-tier --dry-run data/target_evidence/nelson_tiers_all_v3.jsonl
+.venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
+  --task nelson-tier data/target_evidence/nelson_tiers_all_v3.jsonl
 .venv/bin/dotenv run -- sh -c \
-  'psql "$DATABASE_URL" -f db/16_nelson_tier_v2_view.sql'
+  'psql "$DATABASE_URL" -f db/16_nelson_tier_view.sql'
 ```
 
 Migration 16 uses `CREATE OR REPLACE VIEW`, preserving all dependent views. It
@@ -158,7 +163,8 @@ incremental importer rather than rerunning the big-bang `02_ingest.py`:
   --task target-literature data/target_evidence/literature_scores_2026.jsonl
 ```
 
-The importer also accepts `--task silent-kill` and `--task drug-evidence`.
+The importer also accepts `--task silent-kill`, `--task drug-evidence`, and
+`--task nelson-tier`.
 It requires the exact audit fields emitted by `analyses/classifiers/common.py`,
 commits all supplied files atomically, and supports `--dry-run`. It never calls
 an LLM or retrieves a source. `02_ingest.py` remains unchanged as the manual
