@@ -1,0 +1,4 @@
+interface:
+  display_name: "Compile Target Report"
+  short_description: "Build a cited target report and source appendix"
+  default_prompt: "Use $compile-target-report to assess a therapeutic target for a specified indication."

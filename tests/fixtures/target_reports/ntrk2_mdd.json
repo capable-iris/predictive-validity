@@ -1,0 +1,522 @@
+{
+  "target": {
+    "symbol": "NTRK2",
+    "name": "neurotrophic receptor tyrosine kinase 2 (TrkB)",
+    "aliases": ["TrkB", "TRKB"],
+    "indication": "major depressive disorder",
+    "as_of": "2026-08-20"
+  },
+  "assessment": {
+    "verdict": "Mechanistically compelling but not human-disease-validated for MDD: strong rodent causality contrasts with weak MDD genetics and zero Phase 2+ successes for an NTRK2-directed program.",
+    "confidence": "Moderate",
+    "opportunity": "A brain-penetrant, ligand-dependent TrkB PAM could open a bounded plasticity window without tonic full agonism.",
+    "key_risk": "Benefit is circuit- and signaling-branch-dependent; systemic activation may worsen seizures, appetite, pain, or stress susceptibility.",
+    "limitations": [
+      "No selective TrkB target-engagement biomarker or MDD patient efficacy result.",
+      "Several direct-binding claims come from one research network.",
+      "Strict assay-to-positive-Phase-2 precedent is generic, not TrkB-specific."
+    ]
+  },
+  "phenotypes": [
+    {
+      "phenotype": "MDD susceptibility",
+      "modulation": "unclear",
+      "effect_direction": "unclear",
+      "effect": "No reproducible direction",
+      "category": "Genetic",
+      "score": 0,
+      "evidence": "No convincing large-scale NTRK2 association mapped to MDD; small candidate-gene signals do not establish causality or direction.",
+      "tissue": "Human germline; CNS inference",
+      "sources": ["S1"]
+    },
+    {
+      "phenotype": "Antidepressant response",
+      "modulation": "activation",
+      "effect_direction": "increase",
+      "effect": "Required for rodent drug response",
+      "category": "Animal",
+      "score": 2,
+      "evidence": "Reduced TrkB signaling or progenitor TrkB deletion blunted behavioral responses to conventional antidepressants across independent mouse studies.",
+      "tissue": "PFC, hippocampus, dentate gyrus",
+      "sources": ["S3", "S4"]
+    },
+    {
+      "phenotype": "Synaptic plasticity",
+      "modulation": "agonism",
+      "effect_direction": "increase",
+      "effect": "Increased receptor clustering and GluA1 insertion",
+      "category": "Mechanistic",
+      "score": 2,
+      "evidence": "One program reported TrkB transmembrane-dimer binding and Y433F dependence; an independent ketamine target screen was negative.",
+      "tissue": "HEK293T, cortical neurons, mouse cortex",
+      "sources": ["S5", "S9"]
+    },
+    {
+      "phenotype": "Developmental epileptic encephalopathy",
+      "modulation": "gain of function",
+      "effect_direction": "increase",
+      "effect": "Severe NDD, seizures, and visual impairment",
+      "category": "Genetic",
+      "score": 3,
+      "evidence": "Recurrent transmembrane-region variants, especially Y434C, define severe developmental disease with inferred or measured excess signaling.",
+      "tissue": "Human germline; neuronal TrkB",
+      "sources": ["S6"]
+    },
+    {
+      "phenotype": "Hyperphagic obesity and NDD",
+      "modulation": "loss of function",
+      "effect_direction": "increase",
+      "effect": "Increased appetite, weight, developmental burden",
+      "category": "Genetic",
+      "score": 3,
+      "evidence": "Rare truncating or kinase-disrupting human variants define obesity, hyperphagia, and neurodevelopmental phenotypes.",
+      "tissue": "Human germline; hypothalamic/CNS",
+      "sources": ["S6"]
+    },
+    {
+      "phenotype": "Human Trk-pathway engagement",
+      "modulation": "activation",
+      "effect_direction": "increase",
+      "effect": "CSF exposure and qEEG movement; target engagement unproven",
+      "category": "Human PD",
+      "score": 2,
+      "evidence": "ACD856 reached CSF and moved qEEG dose-dependently in healthy volunteers, but the biomarker is not selective for TrkB.",
+      "tissue": "Healthy-volunteer CNS",
+      "sources": ["S10", "S11"]
+    },
+    {
+      "phenotype": "Epileptogenesis",
+      "modulation": "inhibition",
+      "effect_direction": "decrease",
+      "effect": "PLCgamma1 uncoupling was protective",
+      "category": "Animal",
+      "score": 2,
+      "evidence": "TrkB Y816F signaling uncoupling slowed kindling, identifying excessive TrkB-PLCgamma1 signaling as an agonist safety risk.",
+      "tissue": "Mouse hippocampus",
+      "sources": ["S8"]
+    }
+  ],
+  "modalities": [
+    {
+      "modality": "Oral CNS small-molecule PAM",
+      "rank": 1,
+      "pros": [
+        "ACD856 achieved oral exposure, CSF penetration, and dose-related qEEG changes in healthy volunteers.",
+        "ACD856's ligand-dependent PAM design may preserve endogenous activity and tissue gating."
+      ],
+      "cons": [
+        "ACD856 has no MDD patient efficacy data and is pan-Trk rather than TrkB-selective.",
+        "7,8-DHF saw broad rodent use, but independent assays disputed direct TrkB agonism."
+      ],
+      "sources": ["S10", "S11", "S15"]
+    },
+    {
+      "modality": "Agonist antibody or BDNF ligand",
+      "rank": 2,
+      "pros": [
+        "TAM-163 and BI 754132 showed that direct extracellular TrkB agonist antibodies are technically feasible.",
+        "r-metHuBDNF provided direct ligand exposure in human development programs."
+      ],
+      "cons": [
+        "TAM-163 stopped for sensory symptoms and BI 754132 after ischemic optic neuropathy.",
+        "r-metHuBDNF failed ALS Phase 3, while conventional biologics remain poor at crossing the blood-brain barrier."
+      ],
+      "sources": ["S12", "S13", "S14"]
+    },
+    {
+      "modality": "Claimed TrkB-binding psychoplastogen",
+      "rank": 3,
+      "pros": [
+        "Esketamine met Phase 2 TRD endpoints, providing human efficacy for a claimed TrkB-binding psychoplastogen.",
+        "Fluoxetine and ketamine showed reported Y433-dependent TrkB interactions in one research program."
+      ],
+      "cons": [
+        "Esketamine's established pharmacology is polypharmacologic, not TrkB-selective.",
+        "No fluoxetine or ketamine program has clinical TrkB engagement or genotype-response validation."
+      ],
+      "sources": ["S5", "S9", "S18"]
+    }
+  ],
+  "candidates": [
+    {
+      "name": "ACD856",
+      "modality": "Small-molecule pan-Trk PAM",
+      "sponsor": "AlzeCure Pharma",
+      "route": "Oral",
+      "directness": "claimed direct",
+      "indication": "AD/cognitive disorders",
+      "status": "Published healthy-volunteer Phase 1 completed; no MDD efficacy study",
+      "reason": "Not applicable",
+      "sources": ["S10", "S11"]
+    },
+    {
+      "name": "TAM-163 / PF-05230901",
+      "modality": "TrkB agonist IgG1",
+      "sponsor": "Pfizer / Wyeth",
+      "route": "Subcutaneous",
+      "directness": "direct",
+      "indication": "Cachexia/anorexia concept",
+      "status": "Phase 1 terminated",
+      "reason": "Emergent sensory symptoms",
+      "sources": ["S12"]
+    },
+    {
+      "name": "BI 754132",
+      "modality": "TrkB agonist IgG1",
+      "sponsor": "Boehringer Ingelheim",
+      "route": "Intravitreal",
+      "directness": "direct",
+      "indication": "Geographic atrophy",
+      "status": "Phase 1 terminated; development discontinued",
+      "reason": "Four ischemic optic neuropathy cases among 18 participants",
+      "sources": ["S13"]
+    },
+    {
+      "name": "r-metHuBDNF",
+      "modality": "Recombinant protein ligand",
+      "sponsor": "Amgen / Regeneron",
+      "route": "SC; intrathecal pump",
+      "directness": "direct",
+      "indication": "Amyotrophic lateral sclerosis",
+      "status": "Phase 3 failed; program discontinued",
+      "reason": "No therapeutic advantage on primary outcomes",
+      "sources": ["S14"]
+    },
+    {
+      "name": "7,8-DHF / tropoflavin",
+      "modality": "Flavone small molecule",
+      "sponsor": "Academic",
+      "route": "Oral/injected in animals",
+      "directness": "disputed",
+      "indication": "Preclinical CNS models",
+      "status": "Preclinical research compound; no human program verified",
+      "reason": "Not applicable",
+      "sources": ["S15"]
+    },
+    {
+      "name": "Esketamine / ketamine",
+      "modality": "Small molecule",
+      "sponsor": "Janssen / multiple",
+      "route": "Intranasal; IV",
+      "directness": "disputed",
+      "indication": "Treatment-resistant depression",
+      "status": "Positive Phase 2 efficacy; not developed as an NTRK2-selective drug",
+      "reason": "Not applicable",
+      "sources": ["S5", "S9", "S18"]
+    }
+  ],
+  "in_vitro_assays": [
+    {
+      "method": "Microscale thermophoresis",
+      "assay": "GFP-TrkB full-length ligand-binding and displacement assay",
+      "measured": "Thermophoretic binding curve, Kd, and displacement of fluorescent ligand from full-length GFP-TrkB.",
+      "mechanism_link": "Tests direct ligand binding at TrkB.FL upstream of kinase phosphorylation.",
+      "positive_readout": "Saturable WT binding and displacement; absent or shifted binding in Y433F or parental controls.",
+      "negative_readout": "No saturable curve, no displacement, or equal signal in parental/Y433F controls.",
+      "model": "Transient HEK293T GFP-TrkB; WT and Y433F control",
+      "model_availability_score": 0,
+      "model_availability": "Exact cells are not distributed; component HEK293T is ATCC catalog CRL-3216 and requires engineering.",
+      "setup_difficulty_score": 3,
+      "setup": "Adapt: transfection, purified membranes or lysate, labeled receptor, orthogonal controls",
+      "phase2_precedent": "None verified; the assay was published after relevant antidepressant clinical successes.",
+      "sources": ["S5"]
+    },
+    {
+      "method": "Phospho-receptor ELISA",
+      "assay": "In-situ phospho-Trk ELISA with BDNF concentration shift",
+      "measured": "Phospho-Trk signal across BDNF and candidate concentration-response matrices.",
+      "mechanism_link": "Tests TrkB kinase activation immediately downstream of ligand binding.",
+      "positive_readout": "Higher pTrk Emax or left-shifted BDNF EC50 versus vehicle, absent in parental MG87 cells.",
+      "negative_readout": "No pTrk change, cytotoxic signal loss, or equal response in parental cells.",
+      "model": "MG87.TrkB stable line; parental MG87 negative control",
+      "model_availability_score": 1,
+      "model_availability": "Exact published MG87.TrkB line exists; no public repository catalog was verified, so MTA is required.",
+      "setup_difficulty_score": 1,
+      "setup": "Adapt: stable line is reusable, but site-specific pY515/pY816 and viability controls are needed",
+      "phase2_precedent": "None verified; functional potentiation is not proof of direct binding.",
+      "sources": ["S16"]
+    },
+    {
+      "method": "Immunoblot / imaging",
+      "assay": "TrkB clustering, pTrkB, and GluA1 surface-insertion panel",
+      "measured": "TrkB surface clusters, pTrkB, and surface GluA1 after acute compound exposure.",
+      "mechanism_link": "Tests TrkB activation and downstream synaptic-plasticity output.",
+      "positive_readout": "Increased clustering/pTrkB and surface GluA1 in WT neurons; loss in Y433F or TrkB-blocked controls.",
+      "negative_readout": "No change, toxicity, or GluA1 insertion that persists after TrkB disruption.",
+      "model": "Primary mouse cortical neurons; TrkB WT/Y433F",
+      "model_availability_score": 1,
+      "model_availability": "Wild-type founders are orderable; exact Y433F genotype/cultures require colony access, breeding, and isolation.",
+      "setup_difficulty_score": 2,
+      "setup": "Develop: primary culture plus genotype or rescue constructs; high biological relevance, lower throughput",
+      "phase2_precedent": "None verified; reported ketamine/fluoxetine effects postdated clinical efficacy.",
+      "sources": ["S5"]
+    }
+  ],
+  "in_vivo_assays": [
+    {
+      "method": "Genotype-by-drug behavior",
+      "assay": "Forced-swim response in Ntrk2 Y433F knock-in versus WT",
+      "measured": "Immobility time after drug, with locomotion and exposure as specificity controls.",
+      "mechanism_link": "Tests whether behavioral drug response requires the TrkB transmembrane-domain interaction site.",
+      "positive_readout": "Drug lowers immobility in WT but not Y433F mice without changing open-field locomotion.",
+      "negative_readout": "No WT response, equal Y433F response, or immobility change explained by locomotion.",
+      "model": "C57BL/6NTac Ntrk2-Y433F crossed with C57BL6-RccHsd",
+      "model_availability_score": 1,
+      "model_availability": "Exact published Y433F line exists; no public stock/catalog was verified and licensed colony access is needed.",
+      "setup_difficulty_score": 2,
+      "setup": "Develop: licensed knock-in colony, blinded behavior, exposure and locomotor controls",
+      "phase2_precedent": "Qualified ketamine chain: assay preceded positive ELEKT-D Phase 2/3; it does not prove exclusive TrkB causality.",
+      "sources": ["S5", "S19"]
+    },
+    {
+      "method": "Regional immunoblot and behavior",
+      "assay": "Chronic social defeat pTrkB/TrkB plus SPT, TST, and FST",
+      "measured": "PFC/hippocampal pTrkB:TrkB plus sucrose preference and immobility endpoints.",
+      "mechanism_link": "Tests stress-associated TrkB signaling alongside depression-like behavioral outputs.",
+      "positive_readout": "Drug restores regional pTrkB and sucrose preference and lowers immobility versus defeated vehicle.",
+      "negative_readout": "No biochemical/behavioral rescue or behavioral change without pTrkB engagement.",
+      "model": "Male C57BL/6 mice with CD1/ICR aggressors",
+      "model_availability_score": 3,
+      "model_availability": "Both lines are orderable: JAX C57BL/6J stock #000664 and CD-1 IGS catalog 022.",
+      "setup_difficulty_score": 2,
+      "setup": "Develop: stress colony, blinded behavior, PFC/CA3/DG dissection and quantitative phospho-immunoblot",
+      "phase2_precedent": "Qualified S-ketamine chain: assay preceded positive Phase 2 completion, but engagement was indirect.",
+      "sources": ["S17", "S18"]
+    },
+    {
+      "method": "Conditional genetics and behavior",
+      "assay": "Adult progenitor TrkB deletion plus chronic-antidepressant response",
+      "measured": "Adult hippocampal neurogenesis histology and behavioral response after inducible Ntrk2 deletion.",
+      "mechanism_link": "Tests whether TrkB in adult neural progenitors is required for downstream treatment response.",
+      "positive_readout": "Control mice show neurogenesis/behavioral response; response is lost after progenitor Ntrk2 deletion.",
+      "negative_readout": "No control response or unchanged response after verified Ntrk2 deletion.",
+      "model": "Inducible hippocampal neural-progenitor Ntrk2 conditional-KO mice",
+      "model_availability_score": 1,
+      "model_availability": "Ntrk2 flox is MMRRC stock #033048-UCD; exact inducible progenitor knockout requires recovery and crossing.",
+      "setup_difficulty_score": 2,
+      "setup": "Develop: breeding, induction, neurogenesis histology, exposure and behavioral controls",
+      "phase2_precedent": "None verified; the model supports pathway causality, not prospective drug translation.",
+      "sources": ["S4"]
+    }
+  ],
+  "mechanism": {
+    "caption": "Solid arrows summarize supported preclinical links. The final TrkB-to-MDD efficacy edge remains unvalidated in humans and may reverse by circuit or signaling branch.",
+    "nodes": [
+      {
+        "id": "low_tone",
+        "label": "Stress-associated low BDNF/TrkB tone in MDD cortex",
+        "x": 0.08,
+        "y": 0.75,
+        "sources": ["S2"]
+      },
+      {
+        "id": "pam",
+        "label": "Candidate plus endogenous BDNF activates TrkB",
+        "x": 0.29,
+        "y": 0.5,
+        "sources": ["S5", "S11"]
+      },
+      {
+        "id": "signal",
+        "label": "Y515/Y816 signaling: ERK, AKT, PLCgamma1",
+        "x": 0.5,
+        "y": 0.5,
+        "sources": ["S5", "S8"]
+      },
+      {
+        "id": "plasticity",
+        "label": "GluA1 insertion, synaptic plasticity, neurogenesis",
+        "x": 0.71,
+        "y": 0.5,
+        "sources": ["S4", "S5"]
+      },
+      {
+        "id": "response",
+        "label": "Antidepressant response: rodent causal, human target-unproven",
+        "x": 0.92,
+        "y": 0.5,
+        "sources": ["S3", "S18"]
+      },
+      {
+        "id": "context",
+        "label": "NAc D2-MSN and PLCgamma1 context can oppose benefit",
+        "x": 0.5,
+        "y": 0.1,
+        "sources": ["S7", "S8"]
+      }
+    ],
+    "edges": [
+      {
+        "from": "low_tone",
+        "to": "pam",
+        "label": "restoration hypothesis",
+        "sources": ["S2", "S5"]
+      },
+      {
+        "from": "pam",
+        "to": "signal",
+        "label": "ligand-dependent activation",
+        "sources": ["S5"]
+      },
+      {
+        "from": "signal",
+        "to": "plasticity",
+        "label": "branch signaling",
+        "sources": ["S4", "S5"]
+      },
+      {
+        "from": "plasticity",
+        "to": "response",
+        "label": "preclinical causality",
+        "sources": ["S3", "S4"]
+      },
+      {
+        "from": "signal",
+        "to": "context",
+        "label": "region/pathway bias",
+        "sources": ["S7", "S8"]
+      },
+      {
+        "from": "context",
+        "to": "response",
+        "label": "may limit or reverse benefit",
+        "sources": ["S7", "S8"]
+      }
+    ]
+  },
+  "sources": [
+    {
+      "id": "S1",
+      "citation": "NHGRI-EBI GWAS Catalog, NTRK2 mapped associations; Kohli et al., 2010 candidate-gene study",
+      "url": "https://www.ebi.ac.uk/gwas/genes/NTRK2",
+      "type": "human genetics",
+      "pmid": "20010893"
+    },
+    {
+      "id": "S2",
+      "citation": "Tripp et al. Reduced TrkB expression and BDNF-dependent transcripts in MDD subgenual ACC. 2012",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC3638149/",
+      "type": "primary human study",
+      "pmid": "23128924"
+    },
+    {
+      "id": "S3",
+      "citation": "Saarelainen et al. Activation of TrkB is required for behavioral effects of antidepressants. 2003",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/12514234/",
+      "type": "primary animal study",
+      "pmid": "12514234"
+    },
+    {
+      "id": "S4",
+      "citation": "Li et al. TrkB regulates hippocampal neurogenesis and antidepressant sensitivity. 2008",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC2655199/",
+      "type": "primary animal study",
+      "doi": "10.1016/j.neuron.2008.06.023"
+    },
+    {
+      "id": "S5",
+      "citation": "Casarotto et al. Antidepressant drugs act by directly binding to TRKB neurotrophin receptors. 2021",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7938888/",
+      "type": "primary mechanistic study",
+      "pmid": "33606976"
+    },
+    {
+      "id": "S6",
+      "citation": "Berger et al. Genotypic and phenotypic spectrum of NTRK2-related neurodevelopmental disorders. 2025",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/39540377/",
+      "type": "primary human genetics",
+      "doi": "10.1016/j.gim.2024.101326"
+    },
+    {
+      "id": "S7",
+      "citation": "Koo et al. Cell-type-specific TrkB signaling in nucleus accumbens controls stress susceptibility. 2022",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9200970/",
+      "type": "primary animal study",
+      "doi": "10.3389/fpsyt.2022.854494"
+    },
+    {
+      "id": "S8",
+      "citation": "He et al. TrkB-PLCgamma1 signaling is required for epileptogenesis. 2010",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/20445044/",
+      "type": "primary animal study",
+      "doi": "10.1523/JNEUROSCI.5821-09.2010"
+    },
+    {
+      "id": "S9",
+      "citation": "Bonaventura et al. Independent target-deconvolution screen of ketamine, S-ketamine, and HNK. 2023",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10013843/",
+      "type": "primary mechanistic study",
+      "doi": "10.1038/s41380-022-01821-2"
+    },
+    {
+      "id": "S10",
+      "citation": "ClinicalTrials.gov. ACD856 first-in-human SAD/MAD healthy-volunteer study",
+      "url": "https://clinicaltrials.gov/study/NCT05077501",
+      "type": "trial registry",
+      "nct": "NCT05077501"
+    },
+    {
+      "id": "S11",
+      "citation": "Segerdahl et al. Safety, pharmacokinetics, CSF exposure and qEEG of ACD856 in healthy participants. 2024",
+      "url": "https://link.springer.com/article/10.1007/s00228-024-03645-1",
+      "type": "primary Phase 1 study",
+      "doi": "10.1007/s00228-024-03645-1"
+    },
+    {
+      "id": "S12",
+      "citation": "ClinicalTrials.gov. TAM-163/PF-05230901 TrkB agonist antibody Phase 1",
+      "url": "https://clinicaltrials.gov/study/NCT01262690",
+      "type": "trial registry",
+      "nct": "NCT01262690"
+    },
+    {
+      "id": "S13",
+      "citation": "BI 754132 Phase 1: four ischemic optic neuropathy cases among 18 participants; unfavorable benefit-risk",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/42376188/",
+      "type": "primary Phase 1 study",
+      "nct": "NCT04002310"
+    },
+    {
+      "id": "S14",
+      "citation": "BDNF Study Group. Recombinant human BDNF Phase 3 trial in amyotrophic lateral sclerosis. 1999",
+      "url": "https://www.neurology.org/doi/10.1212/WNL.52.7.1427",
+      "type": "primary Phase 3 study",
+      "doi": "10.1212/WNL.52.7.1427"
+    },
+    {
+      "id": "S15",
+      "citation": "Boltaev et al. Multiparametric validation of small-molecule TrkB agonist claims. 2021",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8398766/",
+      "type": "primary assay study",
+      "doi": "10.3390/ph14080704"
+    },
+    {
+      "id": "S16",
+      "citation": "Antila et al. In-situ ELISA for detecting ligand-induced Trk receptor phosphorylation. 2014",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/24239780/",
+      "type": "primary assay methods",
+      "pmid": "24239780"
+    },
+    {
+      "id": "S17",
+      "citation": "Yang et al. S-ketamine restored regional BDNF/TrkB signaling after chronic social defeat. 2015",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC5068814/",
+      "type": "primary animal study",
+      "pmid": "26444872"
+    },
+    {
+      "id": "S18",
+      "citation": "Daly et al. Efficacy and safety of intranasal esketamine in treatment-resistant depression. 2018",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/29282469/",
+      "type": "primary Phase 2 study",
+      "pmid": "29282469"
+    },
+    {
+      "id": "S19",
+      "citation": "Anand et al. ELEKT-D ketamine versus ECT noninferiority trial in treatment-resistant major depression. 2023",
+      "url": "https://www.nejm.org/doi/full/10.1056/NEJMoa2302399",
+      "type": "primary Phase 2/3 study",
+      "doi": "10.1056/NEJMoa2302399"
+    }
+  ]
+}
