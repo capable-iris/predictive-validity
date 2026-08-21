@@ -66,7 +66,7 @@ from common import (  # noqa: E402
 )
 
 
-PROMPT_VERSION = "v5"
+PROMPT_VERSION = "v6"
 DOSSIER_SCHEMA_VERSION = "nelson_evidence_dossier_v5"
 RESULT_SCHEMA_VERSION = "nelson_tier_result_v5"
 DEFAULT_MODEL = "claude-sonnet-4-6"
@@ -110,9 +110,17 @@ Important:
 - T4 is not assigned at target-indication level. Report genetic effect
   direction separately; do not infer intervention concordance.
 - Disease/trait similarity must be justified explicitly.
+- disease_match_hint is non-binding. An "unresolved" hint means only that the
+  deterministic ID/text heuristic found no match; it does not mean the record
+  is unmatched. Judge semantic disease relevance from the supplied labels.
 - Each record has deterministic eligibility metadata. It is a ceiling, not an
   automatic score. You may assign a lower tier, but never a higher tier than
   the cited records can support.
+- A disease-matched Open Targets aggregate genetic record with a T1 ceiling
+  can support T1 without a separate raw GWAS association in this dossier.
+- Before assigning T0, inspect every record whose deterministic ceiling is
+  above T0. If an exact_identifier or exact_text hint on such a record is not
+  cited, explain concretely why its disease label is not applicable.
 - T2 requires significant coding GWAS evidence replicated across at least two
   distinct study accessions. Multiple variants from one study are not
   replication. Fine-mapping/colocalization is unavailable unless explicitly

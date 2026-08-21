@@ -285,6 +285,15 @@ class NelsonTierClassifierTests(unittest.TestCase):
         self.assertEqual(eligibility["evidence_available_date"], "2018-03-02")
         self.assertEqual(eligibility["date_source_version"], "r2026-08-03")
 
+    def test_prompt_does_not_treat_unresolved_hint_as_unmatched(self):
+        self.assertIn(
+            'An "unresolved" hint means only', nelson.USER_TEMPLATE
+        )
+        self.assertIn(
+            "can support T1 without a separate raw GWAS association",
+            nelson.USER_TEMPLATE,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
