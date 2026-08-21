@@ -26,7 +26,14 @@ Answers: **is the target causally implicated in the disease by human genetics?**
 | A6. **ClinGen validity** | Expert curation of gene-disease causality | ClinGen (`clingen_validity` in gb) | Definitive / Strong / Moderate / Limited / Disputed / Refuted |
 | A7. **Human phenotype breadth** | Number of distinct, positively observed terms in the HPO Phenotypic abnormality branch (`HP:0000118`) linked to the gene through human gene-disease annotations; a target-level, indication-agnostic pleiotropy proxy | Pinned official HPO release + `gene_phenotypes` in gb (OMIM/ORPHA annotations) | Count; inheritance, onset/course modifiers, and explicit zero-frequency annotations are excluded |
 
-**Composite:** Nelson tier T0-T4. The stored tier remains available for audit and descriptive analysis, but is temporarily excluded from predictive models because coverage in this database was selectively curated on approval-oriented pairs. Reintroduction requires uniform, indication-specific, pre-outcome computation and held-out-target validation.
+**Composite:** legacy records use Nelson tiers T0-T4. Cohort-wide v4
+adjudication assigns T0-T3 at target-indication level and stores genetic effect
+direction separately; T4 is disabled because intervention concordance is
+drug-mechanism-specific. The stored tier remains available for audit and
+descriptive analysis, but is temporarily excluded from predictive models
+because historical coverage was selectively curated on approval-oriented
+pairs. Reintroduction requires uniform, indication-specific, pre-outcome
+computation and held-out-target validation.
 
 ### Category B — Mechanistic biology (per target, some drug-level)
 
@@ -517,7 +524,7 @@ CREATE TABLE preclin.approval (
   agency           TEXT NOT NULL,   -- 'FDA_CDER' | 'FDA_CBER' | 'EMA' | ...
   approval_date    DATE,
   approval_year    INTEGER,
-  nelson_tier      TEXT,            -- 'T0' | 'T1' | 'T2' | 'T3' | 'T4'
+  nelson_tier      TEXT,            -- legacy approvals may contain T4; cohort v4 emits T0-T3
   first_in_class   BOOLEAN,
   orphan           BOOLEAN,
   breakthrough     BOOLEAN,

@@ -25,6 +25,7 @@ Thumbs.db
 # Large upstream data (not committed — reingest from source per db/README.md)
 *.log
 *.jsonl.tmp
+data/target_evidence/*.dossiers.jsonl
 db/data_*.jsonl
 db/data_*.tsv
 db/data_*.json

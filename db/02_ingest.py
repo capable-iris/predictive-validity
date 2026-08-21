@@ -81,7 +81,7 @@ def log_ingest(cur, source_file, target_table, rows_read, rows_inserted,
 DIMENSIONS = [
     # Category A — genetics
     ("nelson_tier", "A_genetics", "target_indication", "categorical",
-     "Nelson tier T0-T4 for gene-indication genetic support",
+     "Nelson-derived gene-indication tier; legacy T0-T4, cohort v4 T0-T3",
      {"T0": "none", "T1": "GWAS non-coding", "T2": "GWAS coding", "T3": "Mendelian match", "T4": "Mendelian direction-matched"}),
     ("mendelian_n", "A_genetics", "target", "count",
      "Count of Mendelian disease associations from Orphanet + OMIM", None),

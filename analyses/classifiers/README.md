@@ -34,14 +34,24 @@ curated on approval-oriented pairs. Do not run a bulk tiering job to restore it
 as a model feature: reintroduction requires uniform, indication-specific,
 pre-outcome computation and held-out-target validation.
 
-The v3 Nelson workflow enumerates every non-placebo human target-indication
+The v4 Nelson workflow enumerates every non-placebo human target-indication
 pair represented in `preclin.program`; it does not join approval, outcome, or
 phase tables. Before any optional LLM call, it writes a full evidence dossier
-containing every Mendelian, ClinGen, GWAS, Open Targets, and canonical PubMed
-record retrieved. Evidence below the default 400,000-character budget is sent
-intact. Only the oversized tail is trimmed; indication-term overlap orders
-overflow rows, while the model itself adjudicates disease match. The dossier
-remains untruncated and is linked to the result by a SHA-256 digest.
+containing every Mendelian, ClinGen, GWAS, genetics-only Open Targets, and
+canonical PubMed record retrieved. The complete stable dossier content is
+stored as an immutable `preclin.source_document`; local dossier JSONL is a
+resumable ignored sidecar, not the durable audit record. Evidence below the
+default 400,000-character budget is sent intact. Only the oversized tail is
+trimmed; indication-term overlap orders overflow rows.
+
+The model still assigns the final T0-T3 tier. Each prompt record carries a
+stable evidence ID, a non-binding ontology/text relationship hint, and a
+deterministic ceiling describing what it could support if disease-matched.
+The model adjudicates disease relevance and cites supporting evidence IDs; a
+post-call validator rejects T2 without replicated coding GWAS studies and T3
+without qualifying germline Mendelian or Strong/Definitive ClinGen evidence.
+T4 is disabled at target-indication level; genetic effect direction is stored
+separately from drug-mechanism concordance.
 
 Prepare and inspect the full cohort without spending money:
 
@@ -49,7 +59,7 @@ Prepare and inspect the full cohort without spending money:
 .venv/bin/dotenv run -- .venv/bin/python \
   analyses/classifiers/nelson_tier_classify.py \
   --all-clinical --prepare-only \
-  --out data/target_evidence/nelson_tiers_all_v3.jsonl
+  --out data/target_evidence/nelson_tiers_all_v4.jsonl
 ```
 
 Remove `--prepare-only` only after explicit approval for the paid run. The
@@ -129,7 +139,7 @@ imputes cohort medians for those. To close the gap:
     --pair VGF:Alzheimer \
     --pair CORT:Alzheimer \
     --prepare-only \
-    --out data/target_evidence/nelson_tiers_neuro_v3.jsonl
+    --out data/target_evidence/nelson_tiers_neuro_v4.jsonl
 
 # 4. After explicit spend approval, rerun the same Nelson command without
 #    --prepare-only. It reuses the exact saved dossiers and writes score rows.
@@ -142,9 +152,9 @@ imputes cohort medians for those. To close the gap:
 # 6. Validate, then atomically ingest the audited Nelson runs and facts
 .venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
     --task nelson-tier --dry-run \
-    data/target_evidence/nelson_tiers_neuro_v3.jsonl
+    data/target_evidence/nelson_tiers_neuro_v4.jsonl
 .venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
-    --task nelson-tier data/target_evidence/nelson_tiers_neuro_v3.jsonl
+    --task nelson-tier data/target_evidence/nelson_tiers_neuro_v4.jsonl
 
 # 7. Update the established database view without rerunning bootstrap views
 .venv/bin/dotenv run -- sh -c \

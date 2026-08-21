@@ -98,7 +98,7 @@ class SourceAuditTests(unittest.TestCase):
             dimension="nelson_tier",
             category="A_genetics",
             source="nelson_llm",
-            version="v3",
+            version="v4",
             model="test-model",
             value_text="T3",
             value_json={"dossier_sha256": "abc"},

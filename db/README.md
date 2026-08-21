@@ -58,13 +58,15 @@ still verified.
 
 `analyses/classifiers/nelson_tier_classify.py --all-clinical` enumerates all
 non-placebo human target-indication pairs from program and drug-target tables,
-without reading outcomes or approvals. It reads PubMed only from immutable
-`preclin.source_document` rows and writes exact model inputs in the standard
-audit format. Versioned result files are ingested by
+without reading outcomes or approvals. It restricts Open Targets input to
+genetic evidence and reads PubMed only from immutable `source_document` rows.
+Preparation also stores each complete, stable dossier as an immutable
+`nelson_dossier` source document. Exact model inputs use the standard audit
+format. Versioned result files are ingested by
 `13_ingest_llm_outputs.py --task nelson-tier`, which atomically stores the
 `llm_run`, `llm_run_source`, `evidence_score`, and immutable fact snapshot.
-Adjacent `*.dossiers.jsonl` files are untruncated audit artifacts and are not
-database inputs. `03_views.sql` exposes only the newest
+Adjacent ignored `*.dossiers.jsonl` files provide local resumability; the
+database snapshot is the durable audit artifact. `03_views.sql` exposes only the newest
 cohort-wide `nelson_llm` row; legacy approval-derived tiers remain in the long
 table for audit but cannot populate the canonical view.
 
@@ -72,9 +74,9 @@ For an incremental ingest, validate first and then commit only these rows:
 
 ```bash
 .venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
-  --task nelson-tier --dry-run data/target_evidence/nelson_tiers_all_v3.jsonl
+  --task nelson-tier --dry-run data/target_evidence/nelson_tiers_all_v4.jsonl
 .venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
-  --task nelson-tier data/target_evidence/nelson_tiers_all_v3.jsonl
+  --task nelson-tier data/target_evidence/nelson_tiers_all_v4.jsonl
 .venv/bin/dotenv run -- sh -c \
   'psql "$DATABASE_URL" -f db/16_nelson_tier_view.sql'
 ```

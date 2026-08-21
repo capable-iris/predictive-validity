@@ -58,7 +58,7 @@ They are not cohort-wide tier coverage and are not used as predictive inputs.
 
 We measured five distinct evidence types for each drug-target pair:
 
-1. **Human genetic support** — Mendelian variants / GWAS hits in the target linked to the indication (Nelson framework tier T0-T4)
+1. **Human genetic support** — Mendelian variants / GWAS hits in the target linked to the indication (legacy Nelson framework T0-T4; cohort-wide v4 uses T0-T3 with direction stored separately)
 2. **Mechanistic biology** — crystal structure, biochemical mechanism, drugability characterization
 3. **Cell-pathway validation** — human iPSCs / organoids / primary cells showing the expected phenotype when the target is perturbed
 4. **Animal in vivo** — drug or knockout reproduces the disease-modifying effect in animals

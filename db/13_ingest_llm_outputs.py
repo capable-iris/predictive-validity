@@ -12,7 +12,7 @@ Examples:
       --task target-literature data/target_evidence/literature_scores_2026.jsonl
 
     .venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
-      --task nelson-tier data/target_evidence/nelson_tiers_all_v3.jsonl
+      --task nelson-tier data/target_evidence/nelson_tiers_all_v4.jsonl
 
 Migration ``10_clinical_trial_source_audit.sql`` must be applied first. New
 rows are required to contain the exact audit metadata written by
@@ -195,7 +195,10 @@ def require_source_inputs(row: dict, task: str, expected_count: int | None = Non
         )
     if any(
         not isinstance(source, dict)
-        or not isinstance(source.get("excerpt_text"), str)
+        or (
+            source.get("relationship") != "dossier_snapshot"
+            and not isinstance(source.get("excerpt_text"), str)
+        )
         for source in sources
     ):
         raise ValueError(f"{task} source inputs must include the exact excerpt_text")
@@ -594,10 +597,10 @@ def ingest_row(cur, task: str, row: dict) -> tuple[int, int]:
         return 0, facts
 
     if task == "nelson-tier":
-        if row.get("schema_version") != "nelson_tier_result_v3":
-            raise ValueError("nelson-tier row must use nelson_tier_result_v3")
+        if row.get("schema_version") != "nelson_tier_result_v4":
+            raise ValueError("nelson-tier row must use nelson_tier_result_v4")
         tier = str(row.get("tier") or "").upper()
-        if tier not in {"T0", "T1", "T2", "T3", "T4"}:
+        if tier not in {"T0", "T1", "T2", "T3"}:
             raise ValueError(f"invalid Nelson tier: {tier!r}")
         try:
             target_id = int(row["target_id"])
@@ -630,20 +633,57 @@ def ingest_row(cur, task: str, row: dict) -> tuple[int, int]:
             raise ValueError("nelson-tier row must include _source_documents")
         if sources:
             require_source_inputs(row, task)
+        try:
+            dossier_document_id = int(row["dossier_source_document_id"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                "nelson-tier row needs dossier_source_document_id"
+            ) from exc
+        dossier_links = [
+            source
+            for source in sources
+            if source.get("relationship") == "dossier_snapshot"
+            and source.get("source_document_id") == dossier_document_id
+        ]
+        if len(dossier_links) != 1:
+            raise ValueError(
+                "nelson-tier row must link its one canonical dossier snapshot"
+            )
+        cur.execute(
+            """
+            SELECT source_name, external_id, content_sha256
+            FROM preclin.source_document
+            WHERE source_document_id = %s
+            """,
+            (dossier_document_id,),
+        )
+        dossier_source = cur.fetchone()
+        expected_dossier_source = (
+            "nelson_dossier",
+            pair_key,
+            row.get("dossier_sha256"),
+        )
+        if dossier_source != expected_dossier_source:
+            raise ValueError(
+                "dossier source document does not match pair_key/content hash"
+            )
         run_id = insert_run(cur, row, "target_indication", pair_key, "nelson_tier")
         details = {
             "schema_version": row["schema_version"],
             "pair_key": pair_key,
             "gene": gene,
             "indication": indication,
-            "direction_concordance": row.get("direction_concordance"),
+            "genetic_effect_direction": row.get("genetic_effect_direction"),
             "disease_match": row.get("disease_match"),
+            "supporting_evidence": row.get("supporting_evidence") or [],
             "evidence_variants": row.get("evidence_variants") or [],
             "evidence_url": row.get("evidence_url") or "",
             "dossier_sha256": row.get("dossier_sha256"),
+            "dossier_source_document_id": dossier_document_id,
             "dossier_file": row.get("_dossier_file"),
             "evidence_counts": row.get("evidence_counts") or {},
             "prompt_selection": row.get("prompt_selection") or {},
+            "deterministic_validation": row.get("deterministic_validation") or {},
         }
         upsert_evidence(
             cur,

@@ -21,19 +21,35 @@ class FakePairCursor:
         return self.rows
 
 
+class RecordingEvidenceCursor:
+    def __init__(self):
+        self.queries = []
+        self.description = [("placeholder",)]
+
+    def execute(self, sql, params=None):
+        self.queries.append(sql)
+
+    def fetchall(self):
+        return []
+
+
 class NelsonTierClassifierTests(unittest.TestCase):
     def test_all_clinical_enumerator_is_outcome_blind_and_groups_drugs(self):
         cur = FakePairCursor(
             [
-                (10, "GENE1", 20, "Disease A", 1, "Drug A", "small_molecule"),
-                (10, "GENE1", 20, "Disease A", 2, "Drug B", "mAb"),
-                (11, "GENE2", 21, "Disease B", 3, "Drug C", "protein"),
+                (10, "GENE1", 20, "Disease A", "Disease A", None, None,
+                 1, "Drug A", "small_molecule", "inhibitor"),
+                (10, "GENE1", 20, "Disease A", "Disease A", None, None,
+                 2, "Drug B", "mAb", "antagonist"),
+                (11, "GENE2", 21, "Disease B", "Disease B", None, None,
+                 3, "Drug C", "protein", "agonist"),
             ]
         )
         pairs = nelson.all_clinical_pairs(cur)
         self.assertEqual(len(pairs), 2)
         self.assertEqual(pairs[0].key, "10:20")
         self.assertEqual(len(pairs[0].drugs), 2)
+        self.assertEqual(pairs[0].drugs[0]["mechanism"], "inhibitor")
         sql = cur.sql.lower()
         self.assertNotIn("approval", sql)
         self.assertNotIn("outcome", sql)
@@ -45,7 +61,7 @@ class NelsonTierClassifierTests(unittest.TestCase):
             "mendelian_associations": [],
             "clingen_validity": [],
             "gwas_associations": [],
-            "open_targets_evidence": [],
+            "open_targets_genetic_evidence": [],
         }
         documents = [
             {
@@ -72,10 +88,10 @@ class NelsonTierClassifierTests(unittest.TestCase):
                 {"trait": f"height record {index}", "context": "x" * 100}
                 for index in range(20)
             ] + [{"trait": "psoriasis susceptibility", "context": "x" * 100}],
-            "open_targets_evidence": [],
+            "open_targets_genetic_evidence": [],
         }
         dossier = nelson.build_dossier(pair, structured, [])
-        prompt = nelson.prompt_evidence(dossier, max_chars=600)
+        prompt = nelson.prompt_evidence(dossier, max_chars=2500)
         self.assertTrue(prompt["selection_summary"]["overflow"])
         self.assertEqual(prompt["gwas_associations"][0]["trait"], "psoriasis susceptibility")
         self.assertGreater(prompt["selection_summary"]["dropped"]["gwas_associations"], 0)
@@ -83,9 +99,19 @@ class NelsonTierClassifierTests(unittest.TestCase):
     def test_cited_pmids_collects_gwas_and_open_targets_references(self):
         evidence = {
             "gwas_associations": [{"study_pmid": "PMID: 123"}],
-            "open_targets_evidence": [{"key_pmids": ["456", "123"]}],
+            "open_targets_genetic_evidence": [{"key_pmids": ["456", "123"]}],
         }
         self.assertEqual(nelson.cited_pmids(evidence), ["123", "456"])
+
+    def test_open_targets_query_is_genetics_only(self):
+        cur = RecordingEvidenceCursor()
+        evidence = nelson.fetch_target_evidence(cur, 10)
+        sql = cur.queries[-1].lower()
+        self.assertIn("evidence_type", sql)
+        self.assertIn("!~* 'somatic'", sql)
+        self.assertNotIn("literature_score", sql)
+        self.assertNotIn("overall_score", sql)
+        self.assertIn("open_targets_genetic_evidence", evidence)
 
     def test_model_cannot_cite_literature_absent_from_dossier(self):
         pair = nelson.Pair(10, "GENE1", 20, "Disease A")
@@ -94,17 +120,30 @@ class NelsonTierClassifierTests(unittest.TestCase):
             {
                 "mendelian_associations": [],
                 "clingen_validity": [],
-                "gwas_associations": [],
-                "open_targets_evidence": [],
+                "gwas_associations": [{
+                    "id": 1,
+                    "trait": "Disease A",
+                    "p_value": 1e-10,
+                    "context": "intron_variant",
+                    "study_accession": "GCST1",
+                    "study_pmid": "123",
+                }],
+                "open_targets_genetic_evidence": [],
             },
             [],
         )
+        dossier["dossier_source_document_id"] = 98
         response = SimpleNamespace(
             text=json.dumps(
                 {
                     "tier": "T1",
-                    "direction_concordance": "unclear",
-                    "disease_match": "unclear",
+                    "genetic_effect_direction": "unclear",
+                    "disease_match": "exact",
+                    "supporting_evidence": [{
+                        "evidence_id": "gwas:1",
+                        "disease_match": "exact",
+                        "rationale": "The GWAS trait matches Disease A.",
+                    }],
                     "supporting_pmids": ["999"],
                 }
             ),
@@ -125,7 +164,7 @@ class NelsonTierClassifierTests(unittest.TestCase):
                 "mendelian_associations": [],
                 "clingen_validity": [],
                 "gwas_associations": [],
-                "open_targets_evidence": [],
+                "open_targets_genetic_evidence": [],
             },
             [{
                 "source_document_id": 99,
@@ -134,12 +173,14 @@ class NelsonTierClassifierTests(unittest.TestCase):
                 "abstract": "Exact abstract text",
             }],
         )
+        dossier["dossier_source_document_id"] = 100
         response = SimpleNamespace(
             text=json.dumps({
-                "tier": "T1",
-                "direction_concordance": "unclear",
-                "disease_match": "related",
-                "supporting_pmids": ["123"],
+                "tier": "T0",
+                "genetic_effect_direction": "unclear",
+                "disease_match": "unmatched",
+                "supporting_evidence": [],
+                "supporting_pmids": [],
             }),
             model="test-model",
             provider_request_id="request-1",
@@ -153,13 +194,81 @@ class NelsonTierClassifierTests(unittest.TestCase):
         )
         with patch.object(nelson, "call_with_retry", return_value=response):
             row = nelson.score_one_pair(object(), dossier, "test-model")
-        self.assertEqual(row["schema_version"], "nelson_tier_result_v3")
-        self.assertEqual(row["_source_documents"], [{
-            "source_document_id": 99,
-            "relationship": "pubmed_abstract_input",
-            "ordinal": 0,
-            "excerpt_text": "Exact abstract text",
-        }])
+        self.assertEqual(row["schema_version"], "nelson_tier_result_v4")
+        self.assertEqual(row["_source_documents"], [
+            {
+                "source_document_id": 100,
+                "relationship": "dossier_snapshot",
+                "ordinal": 0,
+                "excerpt_text": None,
+            },
+            {
+                "source_document_id": 99,
+                "relationship": "pubmed_abstract_input",
+                "ordinal": 0,
+                "excerpt_text": "Exact abstract text",
+            },
+        ])
+
+    def test_dossier_hash_excludes_preparation_timestamp(self):
+        pair = nelson.Pair(10, "GENE1", 20, "Disease A")
+        structured = {
+            "mendelian_associations": [],
+            "clingen_validity": [],
+            "gwas_associations": [],
+            "open_targets_genetic_evidence": [],
+        }
+        dossier = nelson.build_dossier(pair, structured, [])
+        first_hash = nelson.dossier_sha256(dossier)
+        dossier["prepared_at"] = "2099-01-01T00:00:00+00:00"
+        dossier["dossier_source_document_id"] = 999
+        self.assertEqual(nelson.dossier_sha256(dossier), first_hash)
+
+    def test_deterministic_t3_excludes_generic_mendelian_gene_links(self):
+        generic = nelson.deterministic_eligibility(
+            "mendelian_associations", {"association_type": "gene"}
+        )
+        causal = nelson.deterministic_eligibility(
+            "mendelian_associations",
+            {"association_type": "Disease-causing germline mutation(s) in"},
+        )
+        definitive = nelson.deterministic_eligibility(
+            "clingen_validity", {"classification": "Definitive"}
+        )
+        self.assertEqual(generic["tier_ceiling_if_disease_matched"], "T0")
+        self.assertEqual(causal["tier_ceiling_if_disease_matched"], "T3")
+        self.assertEqual(definitive["tier_ceiling_if_disease_matched"], "T3")
+
+    def test_t2_requires_distinct_replicated_coding_gwas_studies(self):
+        pair = nelson.Pair(10, "GENE1", 20, "Disease A")
+        structured = {
+            "mendelian_associations": [],
+            "clingen_validity": [],
+            "gwas_associations": [
+                {"id": 1, "trait": "Disease A", "p_value": 1e-10,
+                 "context": "missense_variant", "study_accession": "GCST1"},
+                {"id": 2, "trait": "Disease A", "p_value": 2e-10,
+                 "context": "missense_variant", "study_accession": "GCST2"},
+            ],
+            "open_targets_genetic_evidence": [],
+        }
+        selected = nelson.prompt_evidence(nelson.build_dossier(pair, structured, []))
+        support = [
+            {"evidence_id": "gwas:1", "disease_match": "exact", "rationale": "match"},
+            {"evidence_id": "gwas:2", "disease_match": "exact", "rationale": "match"},
+        ]
+        result = nelson.validate_model_support("T2", support, selected)
+        self.assertEqual(result["max_supported_tier"], "T2")
+        with self.assertRaisesRegex(ValueError, "exceeds deterministic"):
+            nelson.validate_model_support("T2", support[:1], selected)
+
+    def test_ontology_hint_is_nonbinding(self):
+        pair = nelson.Pair(
+            10, "GENE1", 20, "Psoriasis patients", canonical_disease="Psoriasis"
+        )
+        hint = nelson.disease_match_hint(pair, {"trait": "psoriasis"})
+        self.assertEqual(hint["relation_hint"], "exact_text")
+        self.assertFalse(hint["binding"])
 
 
 if __name__ == "__main__":
