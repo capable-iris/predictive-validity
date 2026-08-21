@@ -2,8 +2,9 @@
 
 Two modes:
 
-- **First-pass** (default): read all terminated Ph1+ trials from public.trials,
-  classify each with the model into one of six categories.
+- **First-pass** (default): read all terminated Ph1+ trials from immutable
+  `preclin.source_document` ClinicalTrials.gov snapshots and classify each
+  with the model into one of six categories.
 
 - **Verify** (`--verify-from PATH`): read a prior first-pass output, filter
   to labels that need a second look (default: commercial_strategic + unclear
@@ -13,7 +14,7 @@ Two modes:
 The model is a plain `--model` argument. Verify mode defaults to Sonnet;
 first-pass mode defaults to Haiku. Override either explicitly.
 
-Output row schema (per `db/02_ingest.py:ingest_classifications`):
+Output row schema (per `db/13_ingest_llm_outputs.py`):
     {
       "nct_id": str,
       "cat": one of {"efficacy","safety","commercial_strategic",
@@ -29,6 +30,11 @@ Output row schema (per `db/02_ingest.py:ingest_classifications`):
       "_cost_usd": float,
       "_model": str,
       "_prompt_version": str,
+      "_run_id": str,
+      "_system_prompt": str,
+      "_user_prompt": str,
+      "_raw_response": str,
+      "_source_documents": list,
     }
 
 Usage:
@@ -86,7 +92,7 @@ Condition(s): {conditions}
 Intervention: {intervention}
 Overall status: {status}
 Start / completion: {start_date} / {completion_date}
-Enrollment (actual / target): {enrollment}
+Enrollment (count / type): {enrollment}
 Sponsor: {sponsor}
 
 why_stopped free-text (verbatim from CT.gov):
@@ -145,55 +151,81 @@ Return JSON:
 # DB queries
 # --------------------------------------------------------------------------
 
-TRIALS_SQL = """
-    SELECT t.nct_id,
-           t.phase,
-           COALESCE(t.status, '') AS status,
-           COALESCE(t.why_stopped, '') AS why_stopped,
-           COALESCE(t.brief_title, '') AS title,
-           COALESCE(t.conditions, '') AS conditions,
-           COALESCE(t.interventions, '') AS intervention,
-           COALESCE(t.sponsor_name, '') AS sponsor,
-           t.start_date::text AS start_date,
-           t.completion_date::text AS completion_date,
-           COALESCE(t.enrollment_actual::text, '') || ' / ' ||
-             COALESCE(t.enrollment_target::text, '')  AS enrollment
-    FROM public.trials t
-    WHERE t.why_stopped IS NOT NULL
-      AND t.why_stopped != ''
-      AND t.status IN ('TERMINATED','WITHDRAWN','SUSPENDED')
-      AND t.phase IN ('Phase 1','Phase 1/Phase 2','Phase 2','Phase 2/Phase 3','Phase 3','Phase 4')
-    ORDER BY t.nct_id
-    LIMIT %s
+TRIAL_SOURCES_SQL = """
+    SELECT DISTINCT ON (sd.external_id)
+           sd.source_document_id, sd.external_id, sd.raw_content
+    FROM preclin.source_document sd
+    WHERE sd.source_name = 'clinicaltrials.gov'
+      AND sd.source_type = 'registry_record'
+      {nct_filter}
+    ORDER BY sd.external_id, sd.retrieved_at DESC, sd.source_document_id DESC
 """
 
 
+ELIGIBLE_STATUSES = {"TERMINATED", "WITHDRAWN", "SUSPENDED"}
+ELIGIBLE_PHASES = {"PHASE1", "EARLY_PHASE1", "PHASE2", "PHASE3", "PHASE4"}
+
+
+def _date(module: dict, field: str) -> str:
+    return str((module.get(field) or {}).get("date") or "")
+
+
+def _trial_from_source(row) -> dict:
+    source_document_id, nct_id, record = row
+    protocol = record.get("protocolSection", {})
+    identification = protocol.get("identificationModule", {})
+    status = protocol.get("statusModule", {})
+    design = protocol.get("designModule", {})
+    conditions = protocol.get("conditionsModule", {})
+    interventions = protocol.get("armsInterventionsModule", {})
+    sponsors = protocol.get("sponsorCollaboratorsModule", {})
+    phases = design.get("phases") or []
+    enrollment = design.get("enrollmentInfo") or {}
+    why_stopped = status.get("whyStopped") or ""
+    return {
+        "nct_id": nct_id,
+        "phase": "/".join(phases),
+        "_phases": set(phases),
+        "status": status.get("overallStatus") or "",
+        "why_stopped": why_stopped,
+        "title": identification.get("briefTitle") or identification.get("officialTitle") or "",
+        "conditions": "; ".join(conditions.get("conditions") or []),
+        "intervention": "; ".join(
+            item.get("name", "") for item in interventions.get("interventions") or [] if item.get("name")
+        ),
+        "sponsor": (sponsors.get("leadSponsor") or {}).get("name") or "",
+        "start_date": _date(status, "startDateStruct"),
+        "completion_date": _date(status, "completionDateStruct"),
+        "enrollment": f"{enrollment.get('count', '')} / {enrollment.get('type', '')}",
+        "_source_documents": [
+            {
+                "source_document_id": source_document_id,
+                "relationship": "why_stopped_text",
+                "ordinal": 0,
+                "excerpt_text": why_stopped,
+            }
+        ],
+    }
+
+
 def fetch_trials(cur, limit: int) -> list[dict]:
-    cur.execute(TRIALS_SQL, (limit,))
-    return [dict(zip((
-        "nct_id","phase","status","why_stopped","title","conditions",
-        "intervention","sponsor","start_date","completion_date","enrollment"
-    ), r)) for r in cur.fetchall()]
+    cur.execute(TRIAL_SOURCES_SQL.format(nct_filter=""))
+    trials = [_trial_from_source(row) for row in cur.fetchall()]
+    trials = [
+        trial for trial in trials
+        if trial["why_stopped"]
+        and trial["status"] in ELIGIBLE_STATUSES
+        and trial["_phases"] & ELIGIBLE_PHASES
+    ]
+    return trials[:limit]
 
 
 def fetch_trial_meta(cur, nct_ids: list[str]) -> dict:
     if not nct_ids:
         return {}
-    cur.execute(
-        """
-        SELECT nct_id, phase, COALESCE(why_stopped,'') AS why_stopped,
-               COALESCE(conditions,'') AS conditions,
-               COALESCE(interventions,'') AS intervention,
-               COALESCE(sponsor_name,'') AS sponsor
-        FROM public.trials
-        WHERE nct_id = ANY(%s)
-        """,
-        (list(nct_ids),),
-    )
-    return {
-        r[0]: dict(zip(("nct_id","phase","why_stopped","conditions","intervention","sponsor"), r))
-        for r in cur.fetchall()
-    }
+    cur.execute(TRIAL_SOURCES_SQL.format(nct_filter="AND sd.external_id = ANY(%s)"), (list(nct_ids),))
+    trials = [_trial_from_source(row) for row in cur.fetchall()]
+    return {trial["nct_id"]: trial for trial in trials}
 
 
 # --------------------------------------------------------------------------
@@ -209,7 +241,9 @@ def classify_first_pass(client, trial: dict, model: str) -> dict:
     result = call_with_retry(client, model, FIRST_PASS_SYSTEM, user, max_tokens=512)
     row = extract_json_block(result.text)
     row["nct_id"] = trial["nct_id"]
-    return annotate(row, result, PROMPT_VERSION)
+    annotate(row, result, PROMPT_VERSION)
+    row["_source_documents"] = trial.get("_source_documents", [])
+    return row
 
 
 def classify_verify(client, trial: dict, prior: dict, model: str) -> dict:
@@ -223,7 +257,9 @@ def classify_verify(client, trial: dict, prior: dict, model: str) -> dict:
     result = call_with_retry(client, model, VERIFY_SYSTEM, user, max_tokens=512)
     row = extract_json_block(result.text)
     row["nct_id"] = trial["nct_id"]
-    return annotate(row, result, PROMPT_VERSION)
+    annotate(row, result, PROMPT_VERSION)
+    row["_source_documents"] = trial.get("_source_documents", [])
+    return row
 
 
 # --------------------------------------------------------------------------

@@ -710,9 +710,28 @@ SELECT * FROM preclin.v_pathway_wrongness ORDER BY dimension;
 
 **No incremental refresh of materialized views.** Nightly full rebuild. If we scale to millions of programs (won't happen), revisit.
 
-**No time-series of evidence scores.** Every LLM output is a new row per `extracted_at`, but we don't track scoring history per dimension. The latest wins; older rows stay for audit.
+**Current evidence projection plus immutable run history.** `evidence_score`
+keeps one current value per subject/dimension/source/version. Every audited LLM
+run stores its produced value in `llm_run_evidence_score.fact_snapshot`, so a
+later rerun can update the current projection without rewriting history.
 
-**No PubMed abstracts stored.** They exist in `pubmed_abstracts.jsonl` locally. If we want them queryable, add later — for now, cite via PMID array, users fetch full text externally.
+**Trial-linked PubMed abstracts are stored after migration 10.**
+`preclin.source_document` holds immutable, SHA-256-versioned ClinicalTrials.gov
+records and PubMed abstracts; `preclin.source_document_subject` links them to
+trials, targets, drugs, and target-indication pairs. Target-literature abstracts
+may be loaded from the scorer cache, but are stored in this same document table.
+`preclin.v_trial_source_latest` exposes the verbatim registry
+`why_stopped_text` and PubMed `abstract_text` directly, while retaining the
+complete upstream JSON/XML payload behind both.
+
+**Exact LLM inputs are retained for new runs.** `preclin.llm_run`
+stores the system prompt, user prompt, raw response, parameters, usage, and
+content hashes. `preclin.llm_run_source` records which immutable documents—and
+which truncated excerpts—were model inputs. `preclin.llm_run_evidence_score`
+connects one extraction call to all evidence facts it produced and preserves
+the run-produced value independently of the mutable current projection. Existing
+historical classifications are marked as legacy rows whose exact prompts cannot
+be reconstructed.
 
 ---
 

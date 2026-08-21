@@ -1,8 +1,9 @@
 """Target-level literature scorer for evidence lines B, C, D, E.
 
-Consumes: PubMed abstracts (via `analyses/classifiers/pubmed_fetch.py`) OR a
-supplied list of abstracts + PMIDs. Produces one JSON object per target with
-scores 0-3 for each evidence line, matching the schema `db/02_ingest.py`
+Consumes: canonical PubMed abstracts previously stored in
+`preclin.source_document`. Produces one JSON object per target with
+scores 0-3 for each evidence line, matching the schema
+`db/13_ingest_llm_outputs.py`
 expects at `data/target_evidence/literature_scores.jsonl`.
 
 Score rubric (from db/01_schema.sql evidence_dimension registry):
@@ -30,7 +31,6 @@ Cost per target: ~$0.03-0.06 with claude-haiku-4-5. 1,000 targets ≈ $30-60.
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -110,56 +110,70 @@ def score_one_target(client, gene: str, abstracts: list[dict], model: str) -> di
             "_model": model,
             "_prompt_version": PROMPT_VERSION,
         }
-    abs_blob = "\n\n".join(
+    provided = abstracts[:60]
+    missing_source_ids = [
+        str(abstract.get("pmid") or "<unknown>")
+        for abstract in provided
+        if not isinstance(abstract.get("source_document_id"), int)
+    ]
+    if missing_source_ids:
+        raise ValueError(
+            "refusing to call a paid model with non-canonical abstracts; "
+            "import the cache with db/12_ingest_evidence_abstracts.py first "
+            f"(missing source_document_id for {', '.join(missing_source_ids[:5])})"
+        )
+    rendered_abstracts = [
         f"PMID {a['pmid']} | {a.get('title','')} | {a.get('abstract','')[:1500]}"
-        for a in abstracts[:60]
-    )
+        for a in provided
+    ]
+    abs_blob = "\n\n".join(rendered_abstracts)
     user = USER_TEMPLATE.format(gene=gene, abstracts=abs_blob)
     result = call_with_retry(client, model, SYSTEM_PROMPT, user, max_tokens=1024)
     row = extract_json_block(result.text)
     row["gene"] = gene
-    row["_n_abstracts_provided"] = len(abstracts)
-    return annotate(row, result, PROMPT_VERSION)
+    row["_n_abstracts_provided"] = len(provided)
+    annotate(row, result, PROMPT_VERSION)
+    row["_source_documents"] = [
+        {
+            "source_document_id": abstract["source_document_id"],
+            "relationship": "pubmed_abstract_input",
+            "ordinal": ordinal,
+            "excerpt_text": rendered_abstracts[ordinal],
+        }
+        for ordinal, abstract in enumerate(provided)
+    ]
+    return row
 
 
 def fetch_target_abstracts(cur, gene: str, limit: int = 60) -> list[dict]:
-    """Try to load abstracts from a preclin.pubmed_abstract-style cache if present.
-
-    Convention: `preclin.pubmed_target_abstract(gene, pmid, title, abstract)`.
-    If the table doesn't exist, fall back to entrez fetch (not implemented here;
-    users must supply a --abstracts-cache-dir).
-    """
-    try:
+    """Load only canonical, source-addressable PubMed abstracts."""
+    cur.execute("SELECT to_regclass('preclin.source_document_subject')")
+    if cur.fetchone()[0] is not None:
         cur.execute(
             """
-            SELECT pmid, title, abstract
-            FROM preclin.pubmed_target_abstract
-            WHERE gene = %s
-            ORDER BY pmid
+            SELECT DISTINCT ON (sd.external_id)
+                   sd.source_document_id, sd.external_id AS pmid,
+                   sd.title, sd.abstract_text AS abstract
+            FROM preclin.source_document_subject sds
+            JOIN preclin.source_document sd USING (source_document_id)
+            WHERE sds.subject_type = 'target'
+              AND upper(sds.subject_key) = upper(%s)
+              AND sd.source_name = 'pubmed'
+              AND sd.abstract_text IS NOT NULL
+            ORDER BY sd.external_id, sd.source_updated_at DESC NULLS LAST,
+                     sd.retrieved_at DESC, sd.source_document_id DESC
             LIMIT %s
             """,
             (gene, limit),
         )
-        return [dict(zip(("pmid", "title", "abstract"), r)) for r in cur.fetchall()]
-    except Exception:
-        return []
+        rows = cur.fetchall()
+        if rows:
+            return [
+                dict(zip(("source_document_id", "pmid", "title", "abstract"), row))
+                for row in rows
+            ]
 
-
-def load_abstracts_from_dir(cache_dir: Path, gene: str) -> list[dict]:
-    """Fallback: read abstracts from files named {gene}.jsonl in a cache dir."""
-    f = cache_dir / f"{gene}.jsonl"
-    if not f.exists():
-        return []
-    out = []
-    with f.open() as fh:
-        for line in fh:
-            try:
-                d = json.loads(line)
-                if d.get("pmid") and (d.get("title") or d.get("abstract")):
-                    out.append(d)
-            except Exception:
-                pass
-    return out
+    return []
 
 
 def genes_missing_dimension(cur, dimension: str, source_version: str, limit: int) -> list[str]:
@@ -193,8 +207,6 @@ def parse_args():
                          "(e.g. line_c_lit)")
     ap.add_argument("--limit", type=int, default=1000,
                     help="Cap on genes scored per run (default 1000)")
-    ap.add_argument("--abstracts-cache-dir", type=Path, default=None,
-                    help="Directory with per-gene JSONL abstract files")
     ap.add_argument("--out", type=Path, required=True,
                     help="Output JSONL path")
     ap.add_argument("--model", type=str, default=DEFAULT_MODEL)
@@ -223,9 +235,6 @@ def main():
     total_cost = 0.0
     for i, gene in enumerate(todo, start=1):
         abstracts = fetch_target_abstracts(cur, gene, limit=60)
-        if not abstracts and args.abstracts_cache_dir:
-            abstracts = load_abstracts_from_dir(args.abstracts_cache_dir, gene)
-
         row = score_one_target(client, gene, abstracts, args.model)
         append_jsonl(args.out, row)
         total_cost += row.get("_cost_usd", 0.0)
