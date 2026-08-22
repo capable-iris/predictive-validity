@@ -59,7 +59,7 @@ git clone git@github.com:dryingpaint/predictive-validity.git
 cd predictive-validity
 cp .env.example .env       # add DATABASE_URL
 
-pip install psycopg2-binary scikit-learn numpy lightgbm anthropic
+pip install psycopg2-binary scikit-learn numpy lightgbm anthropic openai
 
 # Explore live leaderboard
 psql "$DATABASE_URL" -c "SELECT * FROM preclin.v_benchmark_leaderboard"

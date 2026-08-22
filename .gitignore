@@ -25,10 +25,9 @@ Thumbs.db
 # Large upstream data (not committed — reingest from source per db/README.md)
 *.log
 *.jsonl.tmp
-data/target_evidence/*.dossiers.jsonl
-data/target_evidence/*.batches.jsonl
-data/target_evidence/*.batch-errors.jsonl
-data/target_evidence/nelson_tiers_pilot_*.jsonl
+# Local classifier inputs, provider manifests, raw responses, and validation
+# outputs can contain full prompts and are regenerated/imported, not committed.
+data/target_evidence/
 db/data_*.jsonl
 db/data_*.tsv
 db/data_*.json

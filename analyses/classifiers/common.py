@@ -33,6 +33,7 @@ PRICING = {
     "claude-haiku-4-5-20251001": {"input": 1.0, "output": 5.0},
     "claude-sonnet-4-6":         {"input": 3.0, "output": 15.0},
     "claude-opus-4-7":           {"input": 15.0, "output": 75.0},
+    "gpt-5.6-luna":              {"input": 0.2, "output": 1.2},
 }
 
 
@@ -48,6 +49,7 @@ class CallResult:
     user_prompt: str
     max_tokens: int
     temperature: float
+    provider: str = "anthropic"
 
 
 def get_client():
@@ -150,7 +152,7 @@ def annotate(row: dict, result: CallResult, prompt_version: str) -> dict:
     audit metadata added by the caller; the LLM never produces them.
     """
     row["_run_id"] = str(uuid.uuid4())
-    row["_provider"] = "anthropic"
+    row["_provider"] = result.provider
     row["_provider_request_id"] = result.provider_request_id
     row["_model"] = result.model
     row["_prompt_version"] = prompt_version

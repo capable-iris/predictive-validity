@@ -14,8 +14,10 @@ JSONL runs are loaded incrementally with `db/13_ingest_llm_outputs.py`;
 ## Setup
 
 ```bash
-pip install anthropic psycopg2-binary
+pip install anthropic openai psycopg2-binary
 export ANTHROPIC_API_KEY=sk-ant-...
+# Or, for the OpenAI Nelson batch runner:
+export OPENAI_API_KEY=sk-...
 export DATABASE_URL=postgres://...
 ```
 
@@ -97,6 +99,27 @@ to the model is stable. Import caches or cited PMIDs first with
 `preclin.source_document`. Target-linked records and canonical PMIDs cited by
 GWAS/Open Targets are both included. Each PubMed excerpt shown to the model is
 written to `_source_documents` for ingestion into `preclin.llm_run_source`.
+
+Nelson adjudication can instead use OpenAI Batches with `gpt-5.6-luna`. The
+OpenAI runner consumes the same dossiers and applies the same prompt-hash,
+evidence-ID, PMID, deterministic-ceiling, and result-schema validation. Pass an
+existing result file with `--completed-out` to submit only missing pairs; this
+also permits a run to resume across providers without replacing valid rows:
+
+```bash
+.venv/bin/dotenv run -- .venv/bin/python \
+  analyses/classifiers/nelson_tier_openai_batch.py submit \
+  --dossiers data/target_evidence/nelson_tiers_all_v5.dossiers.jsonl \
+  --manifest data/target_evidence/nelson_tiers_all_openai_v7.batches.jsonl \
+  --completed-out data/target_evidence/nelson_tiers_all_v7.jsonl \
+  --confirm-paid-batch
+
+.venv/bin/dotenv run -- .venv/bin/python \
+  analyses/classifiers/nelson_tier_openai_batch.py collect \
+  --dossiers data/target_evidence/nelson_tiers_all_v5.dossiers.jsonl \
+  --manifest data/target_evidence/nelson_tiers_all_openai_v7.batches.jsonl \
+  --out data/target_evidence/nelson_tiers_all_v7.jsonl
+```
 
 **Canonical cost field is `_cost_usd`.** Older classifier outputs used
 `_cost_share` (Sonnet why_stopped verify) or `_cost` (silent_kill,
