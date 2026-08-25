@@ -20,13 +20,14 @@ Examples:
 Migration ``10_clinical_trial_source_audit.sql`` must be applied first. New
 rows are required to contain the exact audit metadata written by
 ``analyses/classifiers/common.py``. The whole invocation is transactional.
-``--dry-run`` executes row-level writes and then rolls back. Cohort-wide Nelson
+``--dry-run`` executes the task's write path and then rolls back. Cohort-wide Nelson
 files should use ``--preflight`` first: it performs local audit validation and
 set-based database reference checks through temporary COPY staging.
 """
 from __future__ import annotations
 
 import argparse
+import base64
 import csv
 import hashlib
 import io
@@ -35,8 +36,10 @@ import os
 import re
 import sys
 import uuid
+import zlib
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import urlsplit, urlunsplit
 
 import psycopg2
 from psycopg2.extras import Json
@@ -111,6 +114,11 @@ def parse_args() -> argparse.Namespace:
             "uses temporary COPY staging and set-based reference checks"
         ),
     )
+    parser.add_argument(
+        "--direct-db",
+        action="store_true",
+        help="replace a Neon -pooler host with its direct endpoint for bulk COPY",
+    )
     return parser.parse_args()
 
 
@@ -135,6 +143,44 @@ def parsed_output_payload(row: dict) -> dict:
         for key, value in row.items()
         if key not in REDUNDANT_PARSED_OUTPUT_FIELDS
     }
+
+
+def compress_user_prompt(prompt: str) -> tuple[str, int]:
+    """Return base64 zlib bytes for COPY plus the exact UTF-8 byte count."""
+    raw = prompt.encode("utf-8")
+    compressed = zlib.compress(raw, level=6)
+    return base64.b64encode(compressed).decode("ascii"), len(raw)
+
+
+def restore_user_prompt(
+    user_prompt: str | None,
+    user_prompt_compressed: bytes | None,
+    compression: str | None,
+) -> str | None:
+    """Read either legacy plain text or the compressed exact prompt."""
+    if user_prompt is not None:
+        return user_prompt
+    if user_prompt_compressed is None:
+        return None
+    if compression != "zlib":
+        raise ValueError(f"unsupported user-prompt compression: {compression!r}")
+    return zlib.decompress(bytes(user_prompt_compressed)).decode("utf-8")
+
+
+def direct_database_url(database_url: str) -> str:
+    """Return the matching direct Neon URL without exposing credentials."""
+    parsed = urlsplit(database_url)
+    if "-pooler." not in (parsed.hostname or ""):
+        raise ValueError("--direct-db requires a Neon URL with a -pooler host")
+    return urlunsplit(
+        (
+            parsed.scheme,
+            parsed.netloc.replace("-pooler.", ".", 1),
+            parsed.path,
+            parsed.query,
+            parsed.fragment,
+        )
+    )
 
 
 def read_cost(row: dict):
@@ -531,6 +577,301 @@ def nelson_preflight(conn, inputs: list[Path]) -> None:
         print(f"{path}: rows={count}")
     conn.rollback()
     print("validated with temporary staging; rolled back")
+
+
+def _nelson_details(row: dict, gene: str, indication: str) -> dict:
+    return {
+        "schema_version": row["schema_version"],
+        "pair_key": row["pair_key"],
+        "gene": gene,
+        "indication": indication,
+        "genetic_effect_direction": row.get("genetic_effect_direction"),
+        "disease_match": row.get("disease_match"),
+        "supporting_evidence": row.get("supporting_evidence") or [],
+        "evidence_variants": row.get("evidence_variants") or [],
+        "evidence_url": row.get("evidence_url") or "",
+        "dossier_sha256": row.get("dossier_sha256"),
+        "dossier_source_document_id": int(row["dossier_source_document_id"]),
+        "dossier_file": row.get("_dossier_file"),
+        "evidence_counts": row.get("evidence_counts") or {},
+        "prompt_selection": row.get("prompt_selection") or {},
+        "deterministic_validation": row.get("deterministic_validation") or {},
+    }
+
+
+class _IteratorReader:
+    """Expose an iterator of strings as the read() interface COPY expects."""
+
+    def __init__(self, chunks):
+        self._chunks = iter(chunks)
+        self._buffer = ""
+
+    def read(self, size=-1):
+        if size < 0:
+            return self._buffer + "".join(self._chunks)
+        while len(self._buffer) < size:
+            try:
+                self._buffer += next(self._chunks)
+            except StopIteration:
+                break
+        result, self._buffer = self._buffer[:size], self._buffer[size:]
+        return result
+
+
+def _copy_iterator(cur, table: str, columns: tuple[str, ...], rows) -> None:
+    def csv_chunks():
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter="\t", lineterminator="\n")
+        for row in rows:
+            buffer.seek(0)
+            buffer.truncate(0)
+            writer.writerow([r"\N" if value is None else value for value in row])
+            yield buffer.getvalue()
+
+    cur.copy_expert(
+        f"COPY {table} ({', '.join(columns)}) FROM STDIN "
+        "WITH (FORMAT CSV, DELIMITER E'\\t', NULL '\\N')",
+        _IteratorReader(csv_chunks()),
+        size=4 * 1024 * 1024,
+    )
+
+
+def _compact_json(value) -> str:
+    return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
+
+
+def nelson_bulk_ingest(conn, inputs: list[Path]) -> dict[Path, dict]:
+    """Atomically stage Nelson audit data with COPY, then merge set-wise."""
+    cur = conn.cursor()
+    require_schema(cur)
+    cur.execute(
+        "SELECT id, symbol FROM public.targets WHERE ip_type != 'Genomic'"
+    )
+    genes = dict(cur.fetchall())
+    cur.execute("SELECT indication_id, display_name FROM preclin.indication")
+    indications = dict(cur.fetchall())
+    cur.execute(
+        """
+        CREATE TEMP TABLE nelson_run_stage (
+          run_id uuid, provider text, provider_request_id text,
+          subject_type text, subject_key text, classifier_task text,
+          classifier_model text, classifier_version text,
+          system_prompt text COMPRESSION lz4,
+          user_prompt_base64 text, user_prompt_uncompressed_bytes integer,
+          input_sha256 text,
+          raw_response text COMPRESSION lz4, output_sha256 text,
+          parsed_output jsonb COMPRESSION lz4, model_parameters jsonb,
+          input_tokens integer, output_tokens integer, cost_usd double precision
+        ) ON COMMIT DROP;
+        CREATE TEMP TABLE nelson_source_stage (
+          run_id uuid, source_document_id bigint, relationship text,
+          ordinal integer, excerpt_text text COMPRESSION lz4, excerpt_sha256 text
+        ) ON COMMIT DROP;
+        CREATE TEMP TABLE nelson_fact_stage (
+          run_id uuid, subject_id integer, subject_id2 integer,
+          source_version text, value_text text,
+          value_json jsonb COMPRESSION lz4, citation_pmids jsonb,
+          citation_details jsonb, extracted_by text, notes text,
+          fact_snapshot jsonb COMPRESSION lz4
+        ) ON COMMIT DROP
+        """
+    )
+
+    counts = {path: {"runs": 0, "classifications": 0, "facts": 0} for path in inputs}
+
+    def run_rows():
+        for path, line_number, row in read_jsonl(inputs):
+            run_id = str(validate_audit_row(path, line_number, row))
+            target_id = int(row["target_id"])
+            indication_id = int(row["indication_id"])
+            pair_key = f"{target_id}:{indication_id}"
+            if row.get("pair_key") != pair_key:
+                raise ValueError(f"{path}:{line_number}: pair_key must be {pair_key}")
+            system_prompt = row["_system_prompt"]
+            user_prompt = row["_user_prompt"]
+            raw_response = row["_raw_response"]
+            compressed_prompt, prompt_bytes = compress_user_prompt(user_prompt)
+            counts[path]["runs"] += 1
+            counts[path]["facts"] += 1
+            yield (
+                run_id, row.get("_provider", "anthropic"),
+                row.get("_provider_request_id"), "target_indication", pair_key,
+                "nelson_tier", row["_model"], row["_prompt_version"],
+                system_prompt, compressed_prompt, prompt_bytes,
+                prompt_hash(system_prompt, user_prompt),
+                raw_response, sha256_text(raw_response),
+                _compact_json(parsed_output_payload(row)),
+                _compact_json(row.get("_model_parameters") or {}),
+                row.get("_input_tokens"), row.get("_output_tokens"), read_cost(row),
+            )
+
+    _copy_iterator(
+        cur, "nelson_run_stage",
+        (
+            "run_id", "provider", "provider_request_id", "subject_type",
+            "subject_key", "classifier_task", "classifier_model",
+            "classifier_version", "system_prompt", "user_prompt_base64",
+            "user_prompt_uncompressed_bytes", "input_sha256",
+            "raw_response", "output_sha256", "parsed_output", "model_parameters",
+            "input_tokens", "output_tokens", "cost_usd",
+        ),
+        run_rows(),
+    )
+    print(f"staged {sum(c['runs'] for c in counts.values())} Nelson runs", flush=True)
+
+    def source_rows():
+        for path, line_number, row in read_jsonl(inputs):
+            run_id = str(validate_audit_row(path, line_number, row))
+            require_source_inputs(row, "nelson-tier")
+            seen = set()
+            for fallback_ordinal, source in enumerate(row["_source_documents"]):
+                document_id = int(source["source_document_id"])
+                relationship = source.get("relationship") or "model_input"
+                ordinal = source.get("ordinal", fallback_ordinal)
+                excerpt = source.get("excerpt_text")
+                key = (document_id, relationship, ordinal)
+                if key in seen:
+                    continue
+                seen.add(key)
+                yield (
+                    run_id, document_id, relationship, ordinal, excerpt,
+                    sha256_text(excerpt) if excerpt is not None else None,
+                )
+
+    _copy_iterator(
+        cur, "nelson_source_stage",
+        (
+            "run_id", "source_document_id", "relationship", "ordinal",
+            "excerpt_text", "excerpt_sha256",
+        ),
+        source_rows(),
+    )
+    print("staged Nelson source links", flush=True)
+
+    def fact_rows():
+        for path, line_number, row in read_jsonl(inputs):
+            run_id = str(validate_audit_row(path, line_number, row))
+            tier = str(row.get("tier") or "").upper()
+            if tier not in {"T0", "T1", "T2", "T3"}:
+                raise ValueError(f"{path}:{line_number}: invalid Nelson tier {tier!r}")
+            target_id = int(row["target_id"])
+            indication_id = int(row["indication_id"])
+            gene = genes.get(target_id)
+            indication = indications.get(indication_id)
+            if gene is None or indication is None:
+                raise ValueError(f"{path}:{line_number}: unknown target-indication pair")
+            version = str(row["_prompt_version"])
+            model = str(row["_model"])
+            details = _nelson_details(row, gene, indication)
+            citations = [str(value) for value in (row.get("supporting_pmids") or [])]
+            snapshot = evidence_snapshot(
+                subject_type="target_indication", subject_id=target_id,
+                subject_id2=indication_id, dimension="nelson_tier",
+                category="A_genetics", source="nelson_llm", version=version,
+                model=model, value_text=tier, value_json=details,
+                citation_pmids=citations,
+            )
+            yield (
+                run_id, target_id, indication_id, version, tier,
+                _compact_json(details), _compact_json(citations),
+                _compact_json({"dossier_sha256": row.get("dossier_sha256")}),
+                model, str(row.get("rationale") or "")[:2000],
+                _compact_json(snapshot),
+            )
+
+    _copy_iterator(
+        cur, "nelson_fact_stage",
+        (
+            "run_id", "subject_id", "subject_id2", "source_version",
+            "value_text", "value_json", "citation_pmids", "citation_details",
+            "extracted_by", "notes", "fact_snapshot",
+        ),
+        fact_rows(),
+    )
+    print("staged Nelson evidence facts", flush=True)
+
+    cur.execute(
+        """
+        INSERT INTO preclin.llm_run
+          (run_id, provider, provider_request_id, subject_type, subject_key,
+           classifier_task, classifier_model, classifier_version,
+           system_prompt, user_prompt, user_prompt_compressed,
+           user_prompt_compression, user_prompt_uncompressed_bytes,
+           input_sha256, raw_response,
+           output_sha256, parsed_output, model_parameters, input_tokens,
+           output_tokens, cost_usd)
+        SELECT run_id, provider, provider_request_id, subject_type, subject_key,
+               classifier_task, classifier_model, classifier_version,
+               system_prompt, NULL,
+               decode(user_prompt_base64, 'base64'), 'zlib',
+               user_prompt_uncompressed_bytes, input_sha256, raw_response,
+               output_sha256, parsed_output, model_parameters, input_tokens,
+               output_tokens, cost_usd
+        FROM nelson_run_stage
+        ON CONFLICT (run_id) DO NOTHING;
+
+        INSERT INTO preclin.llm_run_source
+          (run_id, source_document_id, relationship, ordinal,
+           excerpt_text, excerpt_sha256)
+        SELECT run_id, source_document_id, relationship, ordinal,
+               excerpt_text, excerpt_sha256
+        FROM nelson_source_stage
+        ON CONFLICT DO NOTHING;
+
+        INSERT INTO preclin.evidence_score
+          (subject_type, subject_id, subject_id2, dimension, category,
+           value_text, value_json, source, source_version, citation_pmids,
+           citation_details, extracted_by, notes)
+        SELECT 'target_indication', subject_id, subject_id2,
+               'nelson_tier', 'A_genetics', value_text, value_json,
+               'nelson_llm', source_version,
+               ARRAY(SELECT jsonb_array_elements_text(citation_pmids)),
+               citation_details, extracted_by, notes
+        FROM nelson_fact_stage
+        ON CONFLICT
+          (subject_type, subject_id, subject_id2, dimension, source, source_version)
+        DO UPDATE SET
+          category = EXCLUDED.category, value_numeric = NULL,
+          value_text = EXCLUDED.value_text, value_boolean = NULL,
+          value_json = EXCLUDED.value_json, confidence = NULL,
+          citation_pmids = EXCLUDED.citation_pmids,
+          citation_details = EXCLUDED.citation_details,
+          extracted_by = EXCLUDED.extracted_by, notes = EXCLUDED.notes,
+          extracted_at = now();
+
+        INSERT INTO preclin.llm_run_evidence_score
+          (run_id, evidence_id, role, fact_snapshot)
+        SELECT s.run_id, e.evidence_id, 'produced', s.fact_snapshot
+        FROM nelson_fact_stage s
+        JOIN preclin.evidence_score e
+          ON e.subject_type = 'target_indication'
+         AND e.subject_id = s.subject_id
+         AND e.subject_id2 = s.subject_id2
+         AND e.dimension = 'nelson_tier'
+         AND e.source = 'nelson_llm'
+         AND e.source_version = s.source_version
+        ON CONFLICT DO NOTHING
+        """
+    )
+    _require_no_preflight_rows(
+        cur,
+        "found immutable fact-snapshot mismatches after bulk merge",
+        """
+        SELECT s.run_id, s.subject_id, s.subject_id2
+        FROM nelson_fact_stage s
+        JOIN preclin.evidence_score e
+          ON e.subject_type = 'target_indication'
+         AND e.subject_id = s.subject_id AND e.subject_id2 = s.subject_id2
+         AND e.dimension = 'nelson_tier' AND e.source = 'nelson_llm'
+         AND e.source_version = s.source_version
+        JOIN preclin.llm_run_evidence_score l
+          ON l.run_id = s.run_id AND l.evidence_id = e.evidence_id
+         AND l.role = 'produced'
+        WHERE l.fact_snapshot IS DISTINCT FROM s.fact_snapshot
+        LIMIT 10
+        """,
+    )
+    return counts
 
 
 def insert_run(cur, row: dict, subject_type: str, subject_key: str, task: str) -> str:
@@ -1092,6 +1433,8 @@ def main() -> None:
     if not database_url:
         raise SystemExit("DATABASE_URL is not set")
 
+    if args.direct_db:
+        database_url = direct_database_url(database_url)
     conn = psycopg2.connect(database_url)
     if args.preflight:
         try:
@@ -1103,19 +1446,29 @@ def main() -> None:
             conn.close()
         return
 
-    counts = {path: {"runs": 0, "classifications": 0, "facts": 0} for path in args.inputs}
     try:
-        cur = conn.cursor()
-        require_schema(cur)
-        for path, line_number, row in read_jsonl(args.inputs):
-            validate_audit_row(path, line_number, row)
-            try:
-                classifications, facts = ingest_row(cur, args.task, row)
-            except Exception as exc:
-                raise ValueError(f"{path}:{line_number}: {exc}") from exc
-            counts[path]["runs"] += 1
-            counts[path]["classifications"] += classifications
-            counts[path]["facts"] += facts
+        if args.task == "nelson-tier":
+            # Validate compact identities/references first, then use set-based
+            # writes for the multi-gigabyte audited cohort.
+            nelson_preflight(conn, args.inputs)
+            counts = nelson_bulk_ingest(conn, args.inputs)
+            cur = conn.cursor()
+        else:
+            counts = {
+                path: {"runs": 0, "classifications": 0, "facts": 0}
+                for path in args.inputs
+            }
+            cur = conn.cursor()
+            require_schema(cur)
+            for path, line_number, row in read_jsonl(args.inputs):
+                validate_audit_row(path, line_number, row)
+                try:
+                    classifications, facts = ingest_row(cur, args.task, row)
+                except Exception as exc:
+                    raise ValueError(f"{path}:{line_number}: {exc}") from exc
+                counts[path]["runs"] += 1
+                counts[path]["classifications"] += classifications
+                counts[path]["facts"] += facts
 
         for path, count in counts.items():
             affected = count["classifications"] + count["facts"]

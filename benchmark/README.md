@@ -11,6 +11,11 @@ Evaluates any target-scoring model against historical `(target × indication)` F
 
 `nelson_tier` is temporarily excluded from every predictive scorer because its selectively curated coverage is outcome-associated. Stored tiers remain available for audit and descriptive analysis only. Reintroduction requires uniform, indication-specific, pre-outcome computation and held-out-target validation.
 
+`analyses/nelson_inclusive_benchmark.py` is the explicit sensitivity path. It
+keeps the canonical feature list unchanged, uses the same Phase 1+ strict
+cohort and held-out-target folds, encodes T0-T3 as one ordered feature, and
+forces uncovered pairs to T0 so annotation coverage is not itself a feature.
+
 ## Scorer registry
 
 Everything in `benchmark/scorers_*.py` implements the same interface:

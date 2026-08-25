@@ -15,6 +15,34 @@ Best model: stacked ensemble (LogReg + regularized LightGBM + RandomForest), eva
 | Cohort | Phase 1+ target-matched T-I pairs, n=13,821 |
 | Base rate | 2.92% (404 approved) |
 
+## Nelson-inclusive sensitivity — current database (2026-08-25)
+
+All 15,704 model-adjudicated Nelson facts were imported with exact run/source
+provenance. On the unchanged Phase 1+ strict cohort and identical 5-fold
+`GroupKFold(target_id)` splits, adding one ordered T0-T3 feature produced:
+
+| Model | Current no-Nelson AUC | With Nelson AUC | Paired ΔAUC (target-bootstrap 95% CI) |
+|---|---:|---:|---:|
+| Stacked ensemble | 0.754 | **0.775** | **+0.021 [+0.012, +0.032]** |
+| LogReg L2 | 0.684 | **0.709** | **+0.026 [+0.013, +0.039]** |
+
+For the stacked model, Nelson increased recall at the top 10% from 0.173 to
+0.240 and precision from 0.051 to 0.070; Brier score remained 0.028. These are
+sensitivity results, not a replacement for the Nelson-excluded headline.
+
+Coverage is not complete for the headline view: 9,851/13,821 pairs (71.3%)
+have adjudicated tiers because the frozen Nelson enumeration and current
+outcome view use different target-pair universes. The 3,970 uncovered rows were
+forced to T0 so LightGBM could not learn annotation missingness as a separate
+signal. Observed approval rates were T0 2.4%, T1 6.3%, T2 7.1%, and T3 12.5%.
+
+The paired current baseline is higher than the 0.653 snapshot below because
+many non-Nelson feature rows were populated or refreshed on 2026-08-21/22,
+after the 2026-08-20 headline run. The within-run Nelson deltas are valid, but
+the current absolute AUCs are not directly comparable to that older snapshot.
+Current-day evidence timing also remains a caveat, so Nelson stays excluded
+from the canonical predictive feature list.
+
 ## Full leaderboard — strict per-T-I outcome
 
 Regenerated Phase 1+ cohort (n=13,821), 5-fold GroupKFold on `target_id`:

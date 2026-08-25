@@ -61,6 +61,17 @@ class FakeClient:
 
 
 class SourceAuditTests(unittest.TestCase):
+    def test_user_prompt_compression_round_trips_exact_utf8(self):
+        prompt = "Exact model input with Unicode: β-catenin\n" * 100
+        encoded, size = ingest.compress_user_prompt(prompt)
+        import base64
+
+        restored = ingest.restore_user_prompt(
+            None, base64.b64decode(encoded), "zlib"
+        )
+        self.assertEqual(restored, prompt)
+        self.assertEqual(size, len(prompt.encode("utf-8")))
+
     def test_parsed_output_omits_normalized_audit_envelope(self):
         row = {
             "tier": "T2",

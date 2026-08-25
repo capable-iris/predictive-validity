@@ -65,6 +65,9 @@ CREATE TABLE IF NOT EXISTS preclin.llm_run (
   classifier_version    TEXT,
   system_prompt         TEXT COMPRESSION lz4,
   user_prompt           TEXT COMPRESSION lz4,
+  user_prompt_compressed BYTEA,
+  user_prompt_compression TEXT,
+  user_prompt_uncompressed_bytes INTEGER,
   input_sha256          TEXT CHECK (input_sha256 IS NULL OR input_sha256 ~ '^[0-9a-f]{64}$'),
   raw_response          TEXT COMPRESSION lz4,
   output_sha256         TEXT CHECK (output_sha256 IS NULL OR output_sha256 ~ '^[0-9a-f]{64}$'),
@@ -73,7 +76,8 @@ CREATE TABLE IF NOT EXISTS preclin.llm_run (
   input_tokens          INTEGER,
   output_tokens         INTEGER,
   cost_usd              DOUBLE PRECISION,
-  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (user_prompt_compression IS NULL OR user_prompt_compression = 'zlib')
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_llm_run_provider_request
   ON preclin.llm_run (provider, provider_request_id)
@@ -293,7 +297,9 @@ SELECT c.classification_id,
        r.cost_usd,
        r.input_sha256,
        r.output_sha256,
-       (r.system_prompt IS NOT NULL AND r.user_prompt IS NOT NULL) AS has_exact_input,
+       (r.system_prompt IS NOT NULL AND
+        (r.user_prompt IS NOT NULL OR r.user_prompt_compressed IS NOT NULL))
+         AS has_exact_input,
        COALESCE(src.sources, '[]'::jsonb) AS exact_input_sources,
        COALESCE(available.sources, '[]'::jsonb) AS available_trial_sources
 FROM preclin.classification c
@@ -374,7 +380,9 @@ SELECT es.evidence_id,
        r.cost_usd,
        r.input_sha256,
        r.output_sha256,
-       (r.system_prompt IS NOT NULL AND r.user_prompt IS NOT NULL) AS has_exact_input,
+       (r.system_prompt IS NOT NULL AND
+        (r.user_prompt IS NOT NULL OR r.user_prompt_compressed IS NOT NULL))
+         AS has_exact_input,
        COALESCE(src.sources, '[]'::jsonb) AS exact_input_sources,
        link.fact_snapshot AS run_fact_snapshot,
        link.recorded_at AS run_fact_recorded_at

@@ -231,14 +231,17 @@ MONO_CONSTRAINTS = {
     "clingen_n_strong": 1, "ot_genetic_max": 1, "ot_somatic_score_max": 1,
     "family_approved_count": 1, "gene_approved_count": 1,
     "depmap_pan_essential": -1, "gnomad_pli": -1,
+    # Used only by the explicitly separate Nelson-inclusive sensitivity model.
+    "nelson_tier": 1,
 }
 
 
-def make_lgb_robust():
+def make_lgb_robust(feature_names=None):
     """Regularized LightGBM with monotonic constraints. Better out-of-time."""
     if not HAS_LGB:
         return None
-    mc = [MONO_CONSTRAINTS.get(name, 0) for name in FEATURE_NAMES]
+    feature_names = feature_names or FEATURE_NAMES
+    mc = [MONO_CONSTRAINTS.get(name, 0) for name in feature_names]
     return lgb.LGBMClassifier(
         n_estimators=200, learning_rate=0.03, max_depth=4, num_leaves=15,
         min_child_samples=50, subsample=0.7, colsample_bytree=0.6,
