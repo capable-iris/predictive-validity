@@ -34,6 +34,7 @@ PRICING = {
     "claude-sonnet-4-6":         {"input": 3.0, "output": 15.0},
     "claude-opus-4-7":           {"input": 15.0, "output": 75.0},
     "gpt-5.6-luna":              {"input": 0.2, "output": 1.2},
+    "gpt-5.6-terra":             {"input": 2.0, "output": 12.0},
 }
 
 

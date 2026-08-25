@@ -66,7 +66,7 @@ from common import (  # noqa: E402
 )
 
 
-PROMPT_VERSION = "v7"
+PROMPT_VERSION = "v8"
 DOSSIER_SCHEMA_VERSION = "nelson_evidence_dossier_v5"
 RESULT_SCHEMA_VERSION = "nelson_tier_result_v5"
 DEFAULT_MODEL = "claude-sonnet-4-6"
@@ -131,6 +131,14 @@ Important:
   present in a record.
 - T3 requires a disease-matched ClinGen Strong/Definitive record or an
   explicitly disease-causing germline Mendelian record.
+- supporting_evidence is only for records that positively support the chosen
+  tier. Do not list records that you reject, records mentioned only as
+  counterevidence, or evidence IDs not present verbatim in the supplied data.
+- The chosen tier must not exceed the highest deterministic tier ceiling among
+  the qualifying records in supporting_evidence.
+- If tier is T0, supporting_evidence, evidence_variants, and supporting_pmids
+  MUST all be empty arrays. Explain rejected indication matches only in the
+  rationale.
 
 Structured evidence follows. It may contain gene-level records for traits that
 do not match this indication; reject those rather than treating them as support.

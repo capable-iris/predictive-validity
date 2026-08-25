@@ -199,11 +199,14 @@ def collect_batch(client, batch_row, args, offsets, handled) -> tuple[int, int, 
     print(f"batch={batch_id} status={batch.status} counts={counts}")
     if batch.status not in TERMINAL_STATUSES:
         return 0, 0, 0.0
-    if batch.status != "completed" or not batch.output_file_id:
+    # Cancelled and expired batches may expose a partial output file containing
+    # every request that finished before termination. Collect those rows so a
+    # subsequent manifest needs to resubmit only genuinely missing pairs.
+    if not batch.output_file_id:
         if batch_id not in handled:
             append_jsonl(args.errors_out, {
                 "batch_id": batch_id,
-                "error": f"batch ended with status {batch.status}",
+                "error": f"batch ended with status {batch.status} without output",
             })
             handled.add(batch_id)
         return 0, int((counts or {}).get("total", 0) or 0), 0.0
