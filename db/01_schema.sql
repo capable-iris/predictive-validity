@@ -203,7 +203,7 @@ CREATE TABLE IF NOT EXISTS preclin.evidence_score (
   value_numeric   DOUBLE PRECISION,
   value_text      TEXT,
   value_boolean   BOOLEAN,
-  value_json      JSONB,                -- for compound/nested values
+  value_json      JSONB COMPRESSION lz4, -- for compound/nested values
   source          TEXT NOT NULL,        -- pubmed_haiku | pubmed_sonnet | depmap | gnomad | clingen | mendelian | gwas | impc | ot_composite | ot_animal_model | chembl | fda_approval | manual
   source_version  TEXT,                 -- e.g. '2026-01' | 'v1.2' | pubmed cutoff date
   confidence      TEXT,                 -- high | medium | low
@@ -372,12 +372,12 @@ CREATE TABLE IF NOT EXISTS preclin.llm_run (
   classifier_task       TEXT NOT NULL,
   classifier_model      TEXT NOT NULL,
   classifier_version    TEXT,
-  system_prompt         TEXT,
-  user_prompt           TEXT,
+  system_prompt         TEXT COMPRESSION lz4,
+  user_prompt           TEXT COMPRESSION lz4,
   input_sha256          TEXT CHECK (input_sha256 IS NULL OR input_sha256 ~ '^[0-9a-f]{64}$'),
-  raw_response          TEXT,
+  raw_response          TEXT COMPRESSION lz4,
   output_sha256         TEXT CHECK (output_sha256 IS NULL OR output_sha256 ~ '^[0-9a-f]{64}$'),
-  parsed_output         JSONB,
+  parsed_output         JSONB COMPRESSION lz4,
   model_parameters      JSONB NOT NULL DEFAULT '{}'::jsonb,
   input_tokens          INTEGER,
   output_tokens         INTEGER,
@@ -395,7 +395,7 @@ CREATE TABLE IF NOT EXISTS preclin.llm_run_source (
   source_document_id   BIGINT NOT NULL REFERENCES preclin.source_document(source_document_id),
   relationship         TEXT NOT NULL DEFAULT 'model_input',
   ordinal              INTEGER NOT NULL DEFAULT 0,
-  excerpt_text         TEXT,
+  excerpt_text         TEXT COMPRESSION lz4,
   excerpt_sha256       TEXT CHECK (excerpt_sha256 IS NULL OR excerpt_sha256 ~ '^[0-9a-f]{64}$'),
   PRIMARY KEY (run_id, source_document_id, relationship, ordinal)
 );
@@ -404,7 +404,7 @@ CREATE TABLE IF NOT EXISTS preclin.llm_run_evidence_score (
   run_id        UUID NOT NULL REFERENCES preclin.llm_run(run_id) ON DELETE CASCADE,
   evidence_id   BIGINT NOT NULL REFERENCES preclin.evidence_score(evidence_id) ON DELETE CASCADE,
   role          TEXT NOT NULL DEFAULT 'produced',
-  fact_snapshot JSONB NOT NULL,
+  fact_snapshot JSONB COMPRESSION lz4 NOT NULL,
   recorded_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (run_id, evidence_id, role)
 );

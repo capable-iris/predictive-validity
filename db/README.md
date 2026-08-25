@@ -68,6 +68,15 @@ The loader stores one date per GWAS Catalog study accession and the release
 URL, version, and SHA-256. All association rows inherit the date through
 `preclin.v_gwas_study_date_latest`.
 
+Migration 19 enables transparent LZ4 compression for large LLM audit columns.
+Apply it before importing cohort-wide Nelson results; it changes storage for
+future values without rewriting historical rows:
+
+```bash
+.venv/bin/dotenv run -- sh -c \
+  'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f db/19_llm_audit_compression.sql'
+```
+
 ## Cohort-wide genetics tiers
 
 `analyses/classifiers/nelson_tier_classify.py --all-clinical` enumerates all
@@ -79,6 +88,8 @@ Preparation also stores each complete, stable dossier as an immutable
 format. Versioned result files are ingested by
 `13_ingest_llm_outputs.py --task nelson-tier`, which atomically stores the
 `llm_run`, `llm_run_source`, `evidence_score`, and immutable fact snapshot.
+The exact prompt, response, and source excerpts live only in their dedicated
+audit columns/tables; `parsed_output` omits those redundant envelope fields.
 Adjacent ignored `*.dossiers.jsonl` files provide local resumability; the
 database snapshot is the durable audit artifact. `03_views.sql` exposes only the newest
 cohort-wide `nelson_llm` row; legacy approval-derived tiers remain in the long
@@ -89,6 +100,8 @@ For an incremental ingest, validate first and then commit only these rows:
 ```bash
 .venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
   --task nelson-tier --preflight data/target_evidence/nelson_tiers_all_v7.jsonl
+.venv/bin/dotenv run -- sh -c \
+  'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f db/19_llm_audit_compression.sql'
 .venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
   --task nelson-tier data/target_evidence/nelson_tiers_all_v7.jsonl
 .venv/bin/dotenv run -- sh -c \

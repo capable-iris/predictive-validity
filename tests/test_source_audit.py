@@ -61,6 +61,28 @@ class FakeClient:
 
 
 class SourceAuditTests(unittest.TestCase):
+    def test_parsed_output_omits_normalized_audit_envelope(self):
+        row = {
+            "tier": "T2",
+            "rationale": "Supported by replicated human genetics.",
+            "_run_id": "run-1",
+            "_model": "test-model",
+            "_system_prompt": "system",
+            "_user_prompt": "large exact prompt",
+            "_raw_response": '{"tier":"T2"}',
+            "_source_documents": [{"source_document_id": 99}],
+        }
+
+        payload = ingest.parsed_output_payload(row)
+
+        self.assertEqual(payload["tier"], "T2")
+        self.assertEqual(payload["rationale"], row["rationale"])
+        self.assertEqual(payload["_run_id"], "run-1")
+        self.assertEqual(payload["_model"], "test-model")
+        self.assertTrue(
+            ingest.REDUNDANT_PARSED_OUTPUT_FIELDS.isdisjoint(payload)
+        )
+
     def test_noncanonical_abstract_fails_before_model_call(self):
         with self.assertRaisesRegex(ValueError, "non-canonical abstracts"):
             scorer.score_one_target(

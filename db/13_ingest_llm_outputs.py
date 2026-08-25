@@ -58,6 +58,18 @@ REQUIRED_AUDIT_FIELDS = (
     "_raw_response",
 )
 
+# These audit-envelope fields have dedicated normalized columns/tables. Keeping
+# them inside parsed_output as well would duplicate the largest payloads (most
+# notably the exact user prompt) without adding any provenance.
+REDUNDANT_PARSED_OUTPUT_FIELDS = frozenset(
+    {
+        "_system_prompt",
+        "_user_prompt",
+        "_raw_response",
+        "_source_documents",
+    }
+)
+
 TARGET_DIMENSIONS = (
     ("line_b", "line_b_lit", "B_mechanistic"),
     ("line_c", "line_c_lit", "C_cell"),
@@ -114,6 +126,15 @@ def prompt_hash(system_prompt: str, user_prompt: str) -> str:
         ensure_ascii=False,
     )
     return sha256_text(canonical)
+
+
+def parsed_output_payload(row: dict) -> dict:
+    """Return model output/metadata without duplicated audit-envelope fields."""
+    return {
+        key: value
+        for key, value in row.items()
+        if key not in REDUNDANT_PARSED_OUTPUT_FIELDS
+    }
 
 
 def read_cost(row: dict):
@@ -548,7 +569,7 @@ def insert_run(cur, row: dict, subject_type: str, subject_key: str, task: str) -
             input_hash,
             raw_response,
             output_hash,
-            Json(row),
+            Json(parsed_output_payload(row)),
             Json(row.get("_model_parameters") or {}),
             row.get("_input_tokens"),
             row.get("_output_tokens"),
