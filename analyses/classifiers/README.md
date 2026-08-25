@@ -200,9 +200,9 @@ imputes cohort medians for those. To close the gap:
     --task target-literature \
     data/target_evidence/literature_scores_neuro_2026.jsonl
 
-# 6. Validate, then atomically ingest the audited Nelson runs and facts
+# 6. Bulk-preflight, then atomically ingest the audited Nelson runs and facts
 .venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
-    --task nelson-tier --dry-run \
+    --task nelson-tier --preflight \
     data/target_evidence/nelson_tiers_neuro_v4.jsonl
 .venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
     --task nelson-tier data/target_evidence/nelson_tiers_neuro_v4.jsonl

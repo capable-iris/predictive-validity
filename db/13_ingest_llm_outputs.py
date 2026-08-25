@@ -14,15 +14,22 @@ Examples:
     .venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
       --task nelson-tier data/target_evidence/nelson_tiers_all_v5.jsonl
 
+    .venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
+      --task nelson-tier --preflight data/target_evidence/nelson_tiers_all_v5.jsonl
+
 Migration ``10_clinical_trial_source_audit.sql`` must be applied first. New
 rows are required to contain the exact audit metadata written by
-``analyses/classifiers/common.py``. The whole invocation is transactional;
-``--dry-run`` validates and then rolls back.
+``analyses/classifiers/common.py``. The whole invocation is transactional.
+``--dry-run`` executes row-level writes and then rolls back. Cohort-wide Nelson
+files should use ``--preflight`` first: it performs local audit validation and
+set-based database reference checks through temporary COPY staging.
 """
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
+import io
 import json
 import os
 import re
@@ -83,6 +90,14 @@ def parse_args() -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="validate and execute all SQL, then roll the transaction back",
+    )
+    parser.add_argument(
+        "--preflight",
+        action="store_true",
+        help=(
+            "bulk-validate Nelson inputs without executing persistent inserts; "
+            "uses temporary COPY staging and set-based reference checks"
+        ),
     )
     return parser.parse_args()
 
@@ -214,6 +229,287 @@ def require_schema(cur) -> None:
     )
     if any(value is None for value in cur.fetchone()):
         raise RuntimeError("apply db/10_clinical_trial_source_audit.sql first")
+
+
+def _copy_rows(cur, table: str, columns: tuple[str, ...], rows: list[tuple]) -> None:
+    """COPY compact, already-validated scalar rows into a temporary table."""
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, delimiter="\t", lineterminator="\n")
+    for row in rows:
+        writer.writerow([r"\N" if value is None else value for value in row])
+    buffer.seek(0)
+    column_sql = ", ".join(columns)
+    cur.copy_expert(
+        f"COPY {table} ({column_sql}) FROM STDIN "
+        "WITH (FORMAT CSV, DELIMITER E'\\t', NULL '\\N')",
+        buffer,
+    )
+
+
+def _require_no_preflight_rows(cur, label: str, query: str) -> None:
+    cur.execute(query)
+    examples = cur.fetchmany(10)
+    if examples:
+        raise ValueError(f"Nelson preflight {label}; examples={examples}")
+
+
+def nelson_preflight(conn, inputs: list[Path]) -> None:
+    """Validate a complete Nelson file with local checks and bulk SQL joins.
+
+    Unlike ``--dry-run``, this path never executes the persistent INSERT/UPSERT
+    statements. It validates the same identities and source references using
+    compact temporary staging tables, avoiding per-row network round trips and
+    multi-gigabyte transient writes.
+    """
+    cur = conn.cursor()
+    require_schema(cur)
+    cur.execute(
+        """
+        CREATE TEMP TABLE nelson_preflight_row (
+            line_number integer NOT NULL,
+            pair_key text NOT NULL,
+            target_id bigint NOT NULL,
+            indication_id bigint NOT NULL,
+            gene text,
+            dossier_document_id bigint NOT NULL,
+            dossier_sha256 text NOT NULL,
+            run_id uuid NOT NULL,
+            provider text NOT NULL,
+            model text NOT NULL,
+            prompt_version text NOT NULL,
+            input_sha256 text NOT NULL,
+            output_sha256 text NOT NULL
+        ) ON COMMIT DROP;
+
+        CREATE TEMP TABLE nelson_preflight_source (
+            line_number integer NOT NULL,
+            pair_key text NOT NULL,
+            run_id uuid NOT NULL,
+            source_document_id bigint NOT NULL,
+            relationship text NOT NULL,
+            ordinal integer NOT NULL,
+            excerpt_sha256 text
+        ) ON COMMIT DROP
+        """
+    )
+
+    staged_rows: list[tuple] = []
+    staged_sources: list[tuple] = []
+    pair_keys: set[str] = set()
+    run_ids: set[str] = set()
+    per_file_counts = {path: 0 for path in inputs}
+    for path, line_number, row in read_jsonl(inputs):
+        run_id = str(validate_audit_row(path, line_number, row))
+        if row.get("schema_version") != "nelson_tier_result_v5":
+            raise ValueError(
+                f"{path}:{line_number}: Nelson row must use nelson_tier_result_v5"
+            )
+        tier = str(row.get("tier") or "").upper()
+        if tier not in {"T0", "T1", "T2", "T3"}:
+            raise ValueError(f"{path}:{line_number}: invalid Nelson tier {tier!r}")
+        try:
+            target_id = int(row["target_id"])
+            indication_id = int(row["indication_id"])
+            dossier_document_id = int(row["dossier_source_document_id"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                f"{path}:{line_number}: invalid target, indication, or dossier ID"
+            ) from exc
+        pair_key = f"{target_id}:{indication_id}"
+        if row.get("pair_key") != pair_key:
+            raise ValueError(
+                f"{path}:{line_number}: pair_key must be {pair_key}"
+            )
+        if pair_key in pair_keys:
+            raise ValueError(f"{path}:{line_number}: duplicate pair_key {pair_key}")
+        if run_id in run_ids:
+            raise ValueError(f"{path}:{line_number}: duplicate run_id {run_id}")
+        pair_keys.add(pair_key)
+        run_ids.add(run_id)
+
+        sources = row.get("_source_documents")
+        if not isinstance(sources, list):
+            raise ValueError(
+                f"{path}:{line_number}: Nelson row must include _source_documents"
+            )
+        require_source_inputs(row, "nelson-tier")
+        dossier_links = [
+            source
+            for source in sources
+            if source.get("relationship") == "dossier_snapshot"
+            and source.get("source_document_id") == dossier_document_id
+        ]
+        if len(dossier_links) != 1:
+            raise ValueError(
+                f"{path}:{line_number}: row must link its one canonical dossier"
+            )
+
+        source_keys: dict[tuple[int, str, int], str | None] = {}
+        for fallback_ordinal, source in enumerate(sources):
+            document_id = source.get("source_document_id")
+            if not isinstance(document_id, int):
+                raise ValueError(
+                    f"{path}:{line_number}: source_document_id must be an integer"
+                )
+            relationship = source.get("relationship") or "model_input"
+            ordinal = source.get("ordinal", fallback_ordinal)
+            if not isinstance(ordinal, int) or ordinal < 0:
+                raise ValueError(
+                    f"{path}:{line_number}: source ordinal must be non-negative"
+                )
+            excerpt = source.get("excerpt_text")
+            if excerpt is not None and not isinstance(excerpt, str):
+                raise ValueError(
+                    f"{path}:{line_number}: excerpt_text must be a string or null"
+                )
+            excerpt_hash = sha256_text(excerpt) if excerpt is not None else None
+            source_key = (document_id, relationship, ordinal)
+            if source_key in source_keys and source_keys[source_key] != excerpt_hash:
+                raise ValueError(
+                    f"{path}:{line_number}: duplicate source key has different excerpt"
+                )
+            source_keys[source_key] = excerpt_hash
+        for (document_id, relationship, ordinal), excerpt_hash in source_keys.items():
+            staged_sources.append(
+                (
+                    line_number,
+                    pair_key,
+                    run_id,
+                    document_id,
+                    relationship,
+                    ordinal,
+                    excerpt_hash,
+                )
+            )
+
+        system_prompt = row["_system_prompt"]
+        user_prompt = row["_user_prompt"]
+        raw_response = row["_raw_response"]
+        staged_rows.append(
+            (
+                line_number,
+                pair_key,
+                target_id,
+                indication_id,
+                row.get("gene"),
+                dossier_document_id,
+                str(row.get("dossier_sha256") or ""),
+                run_id,
+                str(row.get("_provider") or "anthropic"),
+                str(row["_model"]),
+                str(row["_prompt_version"]),
+                prompt_hash(system_prompt, user_prompt),
+                sha256_text(raw_response),
+            )
+        )
+        per_file_counts[path] += 1
+
+    if not staged_rows:
+        raise ValueError("Nelson preflight received no rows")
+    _copy_rows(
+        cur,
+        "nelson_preflight_row",
+        (
+            "line_number", "pair_key", "target_id", "indication_id", "gene",
+            "dossier_document_id", "dossier_sha256", "run_id", "provider",
+            "model", "prompt_version", "input_sha256", "output_sha256",
+        ),
+        staged_rows,
+    )
+    _copy_rows(
+        cur,
+        "nelson_preflight_source",
+        (
+            "line_number", "pair_key", "run_id", "source_document_id",
+            "relationship", "ordinal", "excerpt_sha256",
+        ),
+        staged_sources,
+    )
+    cur.execute("ANALYZE nelson_preflight_row; ANALYZE nelson_preflight_source")
+
+    _require_no_preflight_rows(
+        cur,
+        "found unknown or mismatched targets/indications",
+        """
+        SELECT s.line_number, s.pair_key, s.gene, t.symbol, i.display_name
+        FROM nelson_preflight_row s
+        LEFT JOIN public.targets t
+          ON t.id = s.target_id AND t.ip_type != 'Genomic'
+        LEFT JOIN preclin.indication i ON i.indication_id = s.indication_id
+        WHERE t.id IS NULL OR i.indication_id IS NULL
+           OR (s.gene IS NOT NULL AND upper(s.gene) IS DISTINCT FROM upper(t.symbol))
+        LIMIT 10
+        """,
+    )
+    _require_no_preflight_rows(
+        cur,
+        "found dossier source-document mismatches",
+        """
+        SELECT s.line_number, s.pair_key, s.dossier_document_id,
+               d.source_name, d.external_id, d.content_sha256
+        FROM nelson_preflight_row s
+        LEFT JOIN preclin.source_document d
+          ON d.source_document_id = s.dossier_document_id
+        WHERE d.source_document_id IS NULL
+           OR d.source_name IS DISTINCT FROM 'nelson_dossier'
+           OR d.external_id IS DISTINCT FROM s.pair_key
+           OR d.content_sha256 IS DISTINCT FROM s.dossier_sha256
+        LIMIT 10
+        """,
+    )
+    _require_no_preflight_rows(
+        cur,
+        "found missing source documents",
+        """
+        SELECT s.line_number, s.pair_key, s.source_document_id
+        FROM nelson_preflight_source s
+        LEFT JOIN preclin.source_document d
+          ON d.source_document_id = s.source_document_id
+        WHERE d.source_document_id IS NULL
+        LIMIT 10
+        """,
+    )
+    _require_no_preflight_rows(
+        cur,
+        "found existing run IDs with different content",
+        """
+        SELECT s.line_number, s.pair_key, s.run_id
+        FROM nelson_preflight_row s
+        JOIN preclin.llm_run r ON r.run_id = s.run_id
+        WHERE (r.subject_type, r.subject_key, r.classifier_task,
+               r.classifier_model, r.classifier_version,
+               r.input_sha256, r.output_sha256)
+          IS DISTINCT FROM
+              ('target_indication', s.pair_key, 'nelson_tier',
+               s.model, s.prompt_version, s.input_sha256, s.output_sha256)
+        LIMIT 10
+        """,
+    )
+    _require_no_preflight_rows(
+        cur,
+        "found existing source links with different excerpts",
+        """
+        SELECT s.line_number, s.pair_key, s.run_id, s.source_document_id,
+               s.relationship, s.ordinal
+        FROM nelson_preflight_source s
+        JOIN preclin.llm_run_source r
+          ON r.run_id = s.run_id
+         AND r.source_document_id = s.source_document_id
+         AND r.relationship = s.relationship
+         AND r.ordinal = s.ordinal
+        WHERE r.excerpt_sha256 IS DISTINCT FROM s.excerpt_sha256
+        LIMIT 10
+        """,
+    )
+
+    print(
+        f"Nelson bulk preflight passed: rows={len(staged_rows)} "
+        f"source_links={len(staged_sources)} unique_pairs={len(pair_keys)}"
+    )
+    for path, count in per_file_counts.items():
+        print(f"{path}: rows={count}")
+    conn.rollback()
+    print("validated with temporary staging; rolled back")
 
 
 def insert_run(cur, row: dict, subject_type: str, subject_key: str, task: str) -> str:
@@ -767,11 +1063,25 @@ def log_ingest(cur, path: Path, task: str, rows_read: int, affected: int) -> Non
 
 def main() -> None:
     args = parse_args()
+    if args.preflight and args.dry_run:
+        raise SystemExit("choose either --preflight or --dry-run, not both")
+    if args.preflight and args.task != "nelson-tier":
+        raise SystemExit("--preflight currently supports only --task nelson-tier")
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
         raise SystemExit("DATABASE_URL is not set")
 
     conn = psycopg2.connect(database_url)
+    if args.preflight:
+        try:
+            nelson_preflight(conn, args.inputs)
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+        return
+
     counts = {path: {"runs": 0, "classifications": 0, "facts": 0} for path in args.inputs}
     try:
         cur = conn.cursor()

@@ -88,12 +88,20 @@ For an incremental ingest, validate first and then commit only these rows:
 
 ```bash
 .venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
-  --task nelson-tier --dry-run data/target_evidence/nelson_tiers_all_v5.jsonl
+  --task nelson-tier --preflight data/target_evidence/nelson_tiers_all_v7.jsonl
 .venv/bin/dotenv run -- .venv/bin/python db/13_ingest_llm_outputs.py \
-  --task nelson-tier data/target_evidence/nelson_tiers_all_v5.jsonl
+  --task nelson-tier data/target_evidence/nelson_tiers_all_v7.jsonl
 .venv/bin/dotenv run -- sh -c \
   'psql "$DATABASE_URL" -f db/16_nelson_tier_view.sql'
 ```
+
+The Nelson `--preflight` path validates every JSON audit field locally, copies
+only compact identifiers and hashes into temporary PostgreSQL tables, and uses
+set-based joins to verify targets, indications, dossier snapshots, source
+documents, and any pre-existing run IDs or source links. It rolls back the
+temporary staging transaction and does not execute persistent inserts. The
+generic `--dry-run` remains available when an exact row-by-row write simulation
+is required, but it is intentionally much slower for multi-gigabyte cohorts.
 
 Migration 16 uses `CREATE OR REPLACE VIEW`, preserving all dependent views. It
 must be used for an established database instead of rerunning the bootstrap
