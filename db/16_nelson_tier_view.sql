@@ -9,7 +9,7 @@ BEGIN;
 CREATE OR REPLACE VIEW preclin.v_program_evidence_wide AS
 WITH primary_targets AS (
   SELECT drug_id, target_id, target_symbol
-  FROM preclin.v_drug_target
+  FROM preclin.v_drug_target_consensus
   WHERE role = 'primary'
 ),
 target_ev AS (

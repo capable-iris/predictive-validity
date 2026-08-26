@@ -26,14 +26,14 @@ Answers: **is the target causally implicated in the disease by human genetics?**
 | A6. **ClinGen validity** | Expert curation of gene-disease causality | ClinGen (`clingen_validity` in gb) | Definitive / Strong / Moderate / Limited / Disputed / Refuted |
 | A7. **Human phenotype breadth** | Number of distinct, positively observed terms in the HPO Phenotypic abnormality branch (`HP:0000118`) linked to the gene through human gene-disease annotations; a target-level, indication-agnostic pleiotropy proxy | Pinned official HPO release + `gene_phenotypes` in gb (OMIM/ORPHA annotations) | Count; inheritance, onset/course modifiers, and explicit zero-frequency annotations are excluded |
 
-**Composite:** legacy records use Nelson tiers T0-T4. Cohort-wide v4
+**Composite:** legacy records use Nelson tiers T0-T4. Cohort-wide v8
 adjudication assigns T0-T3 at target-indication level and stores genetic effect
 direction separately; T4 is disabled because intervention concordance is
 drug-mechanism-specific. The stored tier remains available for audit and
-descriptive analysis, but is temporarily excluded from predictive models
-because historical coverage was selectively curated on approval-oriented
-pairs. Reintroduction requires uniform, indication-specific, pre-outcome
-computation and held-out-target validation.
+descriptive analysis, but is temporarily excluded from canonical predictive
+models because current-day GWAS and ClinGen inputs can postdate clinical
+outcomes. The corrected consensus-target cohort requires complete adjudication;
+the tier is evaluated separately with held-out-target validation.
 
 ### Category B — Mechanistic biology (per target, some drug-level)
 
@@ -81,6 +81,15 @@ Answers: **does the drug or KO reproduce the disease-modifying effect in animals
 | D7. **Dose-response coherence** | PK/PD in animal predictive of expected human dose | Literature | 0/1/2/3 |
 | D8. **Chronic dosing safety** | Long-term (30-day+) dosing in animals without emergent tox | Regulatory summaries | 0/1/2/3 |
 | D9. **Preclinical tox flags (multi)** | Cardiovascular, hepatic, hematological, neurological, genotoxic, reprotoxic | Regulatory + literature | per-organ 0-3 |
+
+For the implemented IMPC target feature, `impc_n_phenotypes` is numeric only
+when a one-to-one human/mouse mapping has significant DR24 MP terms or when a
+tested-negative zero is supported by phenotyping availability and at least 13
+successful homozygous procedures. `impc_phenotyping_status` distinguishes
+positive, adequately tested-negative, insufficiently tested, unphenotyped,
+ambiguous, and unresolved targets; non-eligible states remain `NULL` rather
+than being coerced to zero. `impc_n_homozygous_procedures_tested` preserves the
+coverage denominator used by that eligibility rule.
 
 **Composite:** animal in vivo score. Predictive effect: **null at target-level (OR 1.01 [0.93, 1.09])**. Drug-level TBD.
 
@@ -536,6 +545,23 @@ CREATE TABLE preclin.approval (
 );
 ```
 
+### ChEMBL target approval history
+
+Migration 25 keeps historical target validation separate from exact
+target–indication outcomes. `preclin.chembl_target_approval_release` records
+the ChEMBL version and mapping policy;
+`preclin.chembl_target_mapping` distinguishes a successfully mapped target
+with no qualifying approval from an unmapped target; and
+`preclin.chembl_target_approval_event` stores distinct molecule-level direct
+mechanisms and their ChEMBL `first_approval` years. The analytical view
+`preclin.v_chembl_target_first_approval` selects the latest imported release
+and returns one row per mapped local target with a nullable earliest year.
+
+These years are approximate target-validation events. They are not precise
+approval dates or evidence that a drug was approved for a particular local
+indication, so they must not replace `preclin.approval` or enter predictive
+features as outcome-derived evidence.
+
 ### New: `preclin.evidence_score` (the fact table)
 **One row per (subject × dimension × source × extraction).**
 
@@ -593,6 +619,20 @@ CREATE INDEX ON preclin.classification (subject_type, subject_key);
 ### `preclin.v_drug_target` — latest resolved target per drug
 Picks the highest-confidence resolution per drug.
 
+### `preclin.v_drug_target_unambiguous` — attributable primary targets
+Applies the same source-priority policy but retains a `(drug, role)` only when
+all records at the best priority agree on one target. The strict target-level
+outcome view no longer uses this conservative sensitivity surface.
+
+### `preclin.v_drug_target_consensus` — uniquely best-supported targets
+Excludes the explicit `fda_approval` mapping source, then resolves source
+priority, confidence, and independent-source corroboration. It retains a
+`(drug, role)` only when those approval-independent criteria identify one
+unique strongest target; exact strongest ties remain unresolved rather than
+being assigned arbitrarily. The transactionally refreshed
+`preclin.drug_target_consensus_map` backs both the strict outcome and Nelson
+enumeration views.
+
 ### `preclin.v_program_evidence_wide` — the flat master
 The `drug_evidence_master_v2_broad.csv` equivalent. Pivots evidence_score into wide columns for one row per program.
 
@@ -609,7 +649,7 @@ FROM preclin.program p
 JOIN preclin.drug d ON d.drug_id = p.drug_id
 JOIN preclin.indication i ON i.indication_id = p.indication_id
 JOIN preclin.program_outcome po ON po.program_id = p.program_id
-LEFT JOIN preclin.v_drug_target dt ON dt.drug_id = p.drug_id
+LEFT JOIN preclin.v_drug_target_consensus dt ON dt.drug_id = p.drug_id
 LEFT JOIN public.targets t ON t.id = dt.target_id
 LEFT JOIN preclin.evidence_score es ON
     (es.subject_type = 'target' AND es.subject_id = t.id) OR

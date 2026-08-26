@@ -16,8 +16,8 @@ Models:
 
 Features: 40+ evidence dimensions from v_target_evidence_wide + therapeutic
 area context. Deliberately EXCLUDES leaky or outcome-selected features:
-n_sponsors, n_programs, max_phase_reached, ot_known_drug_max, ot_overall_max,
-and nelson_tier.
+n_sponsors, n_programs, max_phase_reached, approval-derived precedent counts,
+ot_known_drug_max, ot_overall_max, and nelson_tier.
 """
 
 import os
@@ -58,20 +58,21 @@ DB_URL = os.environ["DATABASE_URL"]
 #   n_sponsors / n_programs / n_drugs / max_phase_reached — post-hoc program development
 #   ot_known_drug_max — Open Targets score derived from known approved drugs
 #   ot_overall_max — includes ot_known_drug_max as a component
-#   nelson_tier — selectively curated on known-drug/approval-oriented pairs;
-#                 missingness is therefore a near-proxy for the outcome
+#   family_approved_count / gene_approved_count — current-day approval-derived
+#                 values; historical values require a valid pre-trial cutoff
+#   nelson_tier — current-day evidence sensitivity, kept outside the headline
 
 EXCLUDED_PREDICTIVE_FEATURES = frozenset({
     "n_sponsors", "n_programs", "n_drugs", "max_phase_reached",
-    "ot_known_drug_max", "ot_overall_max", "nelson_tier",
+    "ot_known_drug_max", "ot_overall_max", "ot_l2g_score_max",
+    "family_approved_count", "gene_approved_count", "nelson_tier",
 })
 
 NUMERIC_FEATURES = [
     # A. Genetics
     "mendelian_n", "mendelian_n_dominant", "mendelian_n_recessive",
-    "clingen_n_strong", "gwas_n_sig",
+    "clingen_n_strong", "gwas_n_sig", "n_hpo_phenotypes",
     "ot_genetic_max", "ot_somatic_score_max", "ot_rna_expression_max",
-    "ot_l2g_score_max",
     # B. Mechanistic
     "line_b_lit", "tau_specificity", "sc_tau_specificity",
     "n_ppi_partners", "n_reactome_pathways",
@@ -88,7 +89,6 @@ NUMERIC_FEATURES = [
     # H. Safety
     "gnomad_pli", "gnomad_loeuf",
     # I. Landscape
-    "family_approved_count", "gene_approved_count",
     "n_causal_diseases", "n_suggestive_diseases", "n_dgidb_drugs",
 ]
 
@@ -102,6 +102,20 @@ THERAPEUTIC_AREAS = ["oncology", "neuro", "autoimmune", "cv", "metabolic",
 
 FEATURE_NAMES = (NUMERIC_FEATURES + BOOL_FEATURES +
                  [f"ta_{a}" for a in THERAPEUTIC_AREAS])
+
+# NULL means different things for different sources. These features are counts
+# or scores over complete relationship snapshots, so absence of a target row
+# means zero recorded evidence in that pinned snapshot. Every other NULL is
+# retained as unknown and imputed from the training fold by the model pipeline.
+STRUCTURAL_ZERO_FEATURES = frozenset({
+    "mendelian_n", "mendelian_n_dominant", "mendelian_n_recessive",
+    "clingen_n_strong", "gwas_n_sig", "n_hpo_phenotypes",
+    "ot_genetic_max", "ot_somatic_score_max", "ot_rna_expression_max",
+    "ot_animal_model_max", "ot_is_mendelian_any",
+    "n_ppi_partners", "n_reactome_pathways",
+    "n_go_biological_process", "n_go_molecular_function",
+    "n_go_cellular_component", "n_dgidb_drugs",
+})
 
 # Canonical taxonomy used by category-level analyses. Predictive feature
 # additions and removals must be made through FEATURE_NAMES and covered by the
@@ -164,7 +178,7 @@ def row_to_feature_vector(row: dict) -> np.ndarray:
     for f in NUMERIC_FEATURES:
         v = row.get(f)
         if v is None:
-            feats.append(np.nan)
+            feats.append(0.0 if f in STRUCTURAL_ZERO_FEATURES else np.nan)
         else:
             try:
                 feats.append(float(v))
@@ -172,7 +186,10 @@ def row_to_feature_vector(row: dict) -> np.ndarray:
                 feats.append(np.nan)
     for f in BOOL_FEATURES:
         v = row.get(f)
-        feats.append(np.nan if v is None else (1.0 if v else 0.0))
+        if v is None:
+            feats.append(0.0 if f in STRUCTURAL_ZERO_FEATURES else np.nan)
+        else:
+            feats.append(1.0 if v else 0.0)
     ta = row.get("therapeutic_area") or "other"
     for a in THERAPEUTIC_AREAS:
         feats.append(1.0 if ta == a else 0.0)
@@ -281,12 +298,15 @@ COUNT_FEATURES_FOR_LOG = {
 
 
 def log_transform_features(X, feature_names=None):
-    """Log-transform known count features to reduce skew."""
+    """Log-transform observed counts without converting unknowns to zero."""
     feature_names = feature_names or FEATURE_NAMES
     X_new = X.copy()
     for i, name in enumerate(feature_names):
         if name in COUNT_FEATURES_FOR_LOG:
-            X_new[:, i] = np.log1p(np.maximum(0, np.nan_to_num(X_new[:, i], nan=0)))
+            values = X_new[:, i]
+            observed = np.isfinite(values)
+            values[~observed] = np.nan
+            values[observed] = np.log1p(np.maximum(0, values[observed]))
     return X_new
 
 
@@ -346,10 +366,21 @@ def load_cohort_features(cohort_loader=load_strict, label_key="y_strict"):
 # Runner (for standalone `python3 scorers_ml.py`)
 # ============================================================
 
-def eval_and_store(scorer_name, oof, y, cohort_def, notes):
+def eval_and_store(scorer_name, oof, y, cohort_def, notes, groups=None):
     from psycopg2.extras import execute_values
     y_list, p_list = y.tolist(), oof.tolist()
-    auc, auc_lo, auc_hi = _runner.bootstrap_metric(y_list, p_list, _runner.auc_roc)
+    if groups is None:
+        auc, auc_lo, auc_hi = _runner.bootstrap_metric(
+            y_list, p_list, _runner.auc_roc
+        )
+        bootstrap_note = "row bootstrap"
+    else:
+        group_list = groups.tolist() if hasattr(groups, "tolist") else list(groups)
+        auc, auc_lo, auc_hi = _runner.cluster_bootstrap_metric(
+            y_list, p_list, group_list, _runner.auc_roc,
+            n_iter=1000, seed=42,
+        )
+        bootstrap_note = "target-cluster bootstrap (1000 iterations; seed 42)"
     brier = _runner.brier_score(y_list, p_list)
     r10 = _runner.recall_at_top_k(y_list, p_list, 0.10)
     p10 = _runner.precision_at_top_k(y_list, p_list, 0.10)
@@ -370,7 +401,8 @@ def eval_and_store(scorer_name, oof, y, cohort_def, notes):
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (scorer_name, "v1", cohort_def, len(y),
               int(y.sum()), int(len(y) - y.sum()),
-              auc, auc_lo, auc_hi, brier, r10, p10, rs10, ece, notes))
+              auc, auc_lo, auc_hi, brier, r10, p10, rs10, ece,
+              f"{notes}; uncertainty={bootstrap_note}"))
         conn.commit()
     conn.close()
 

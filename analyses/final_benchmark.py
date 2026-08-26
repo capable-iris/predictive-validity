@@ -74,10 +74,14 @@ def main():
     print(f"\n== Stacked (held-out-target GroupKFold, Phase 1+, strict) ==")
     oof = group_stacked_cv(X_log, y, groups, base)
     _robust.eval_and_store(
-        "stacked_final_no_nelson_v1", oof, y,
-        "ti_phase1plus_strict_holdout_target_no_nelson",
-        "Phase 1+ strict cohort, GroupKFold on target_id, stacked LogReg + "
-        "robust-LGB + RF meta ensemble, log-transformed counts; nelson_tier excluded",
+        "stacked_final_no_nelson_target_bootstrap_v5", oof, y,
+        "ti_phase1plus_strict_consensus_target_no_nelson_impc_dr24",
+        "Phase 1+ strict cohort restricted to non-placebo programs with one "
+        "uniquely best-supported primary-target consensus; GroupKFold on target_id; "
+        "stacked LogReg + robust-LGB + RF meta ensemble; structural absences set "
+        "to zero, unknown measurements fold-locally imputed; audited IMPC DR24 "
+        "update with tested-negative zeros only; nelson_tier excluded",
+        groups=groups,
     )
 
     # LogReg alone with GroupKFold
@@ -89,10 +93,13 @@ def main():
         model.fit(X_log[tr], y[tr])
         oof2[te] = model.predict_proba(X_log[te])[:, 1]
     _robust.eval_and_store(
-        "logreg_final_no_nelson_v1", oof2, y,
-        "ti_phase1plus_strict_holdout_target_no_nelson",
-        "LogReg L2, GroupKFold(target), Phase 1+ strict, log-transformed; "
+        "logreg_final_no_nelson_target_bootstrap_v5", oof2, y,
+        "ti_phase1plus_strict_consensus_target_no_nelson_impc_dr24",
+        "LogReg L2, GroupKFold(target), Phase 1+ strict consensus-target cohort; "
+        "structural absences set to zero, unknown measurements fold-locally imputed; "
+        "audited IMPC DR24 update with tested-negative zeros only; "
         "nelson_tier excluded",
+        groups=groups,
     )
 
 

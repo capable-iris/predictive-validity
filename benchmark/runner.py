@@ -153,19 +153,25 @@ def row_to_evidence_context(row: dict) -> Tuple[dict, dict]:
 
 def auc_roc(y: List[bool], p: List[float]) -> float:
     """Wilcoxon-Mann-Whitney U → AUC."""
-    pos = [pp for yy, pp in zip(y, p) if yy]
-    neg = [pp for yy, pp in zip(y, p) if not yy]
-    if not pos or not neg:
+    n_pos = sum(1 for value in y if value)
+    n_neg = len(y) - n_pos
+    if not n_pos or not n_neg:
         return None
-    n_wins = 0
-    n_ties = 0
-    for a in pos:
-        for b in neg:
-            if a > b:
-                n_wins += 1
-            elif a == b:
-                n_ties += 1
-    return (n_wins + 0.5 * n_ties) / (len(pos) * len(neg))
+    ordered = sorted(zip(p, y), key=lambda item: item[0])
+    negatives_below = 0
+    wins = 0.0
+    start = 0
+    while start < len(ordered):
+        end = start + 1
+        while end < len(ordered) and ordered[end][0] == ordered[start][0]:
+            end += 1
+        positives_tied = sum(1 for _, value in ordered[start:end] if value)
+        negatives_tied = (end - start) - positives_tied
+        wins += positives_tied * negatives_below
+        wins += 0.5 * positives_tied * negatives_tied
+        negatives_below += negatives_tied
+        start = end
+    return wins / (n_pos * n_neg)
 
 
 def brier_score(y: List[bool], p: List[float]) -> float:
@@ -265,6 +271,50 @@ def bootstrap_metric(y: List[bool], p: List[float], metric_fn, n_iter: int = 200
     samples.sort()
     lo = samples[int(0.025 * len(samples))]
     hi = samples[int(0.975 * len(samples))]
+    return point, lo, hi
+
+
+def cluster_bootstrap_metric(y, p, groups, metric_fn, n_iter=1000, seed=42):
+    """Bootstrap a metric by resampling complete target clusters.
+
+    Every sampled target contributes all of its target-indication rows. A
+    target sampled more than once contributes another complete copy, preserving
+    within-target outcome and prediction dependence.
+    """
+    if len(y) != len(p) or len(y) != len(groups):
+        raise ValueError("y, predictions, and groups must have equal length")
+    if not y:
+        return None, None, None
+    point = metric_fn(y, p)
+    if point is None:
+        return None, None, None
+    unique_groups = list(dict.fromkeys(groups))
+    by_group = {
+        group: [i for i, observed in enumerate(groups) if observed == group]
+        for group in unique_groups
+    }
+    rng = random.Random(seed)
+    samples = []
+    for _ in range(n_iter):
+        sampled_groups = [rng.choice(unique_groups) for _ in unique_groups]
+        sampled_indices = [
+            index
+            for group in sampled_groups
+            for index in by_group[group]
+        ]
+        sy = [y[index] for index in sampled_indices]
+        sp = [p[index] for index in sampled_indices]
+        try:
+            value = metric_fn(sy, sp)
+            if value is not None:
+                samples.append(value)
+        except Exception:
+            pass
+    if not samples:
+        return point, None, None
+    samples.sort()
+    lo = samples[int(0.025 * len(samples))]
+    hi = samples[min(int(0.975 * len(samples)), len(samples) - 1)]
     return point, lo, hi
 
 

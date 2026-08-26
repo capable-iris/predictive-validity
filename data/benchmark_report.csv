@@ -1,6 +1,12 @@
 scope,model_or_ablation,validation,n_pairs,n_approved,n_targets,auc,auc_ci_lo,auc_ci_hi,brier,recall_at_10pct,precision_at_10pct,rs_top_decile,ece,delta_auc
-phase1plus,stacked_final_no_nelson_v1,GroupKFold(target_id),13821,404,1086,0.652988358,0.622185580,0.679833835,0.028096371,0.257425743,0.075253256,3.120250844,0.001064794,
-phase1plus,logreg_final_no_nelson_v1,GroupKFold(target_id),13821,404,1086,0.643348692,0.612797038,0.672710466,0.233225111,0.207920792,0.060781476,2.362689942,0.420943958,
+phase1plus_consensus,stacked_final_no_nelson_target_bootstrap_v5,GroupKFold(target_id); target-bootstrap CI,10685,336,792,0.570443026,0.514809194,0.619933926,0.030411283,0.139880952,0.044007491,1.464429195,0.002025154,
+phase1plus_consensus,logreg_final_no_nelson_target_bootstrap_v5,GroupKFold(target_id); target-bootstrap CI,10685,336,792,0.571054427,0.519872271,0.615951212,0.254261390,0.163690476,0.051498127,1.762482173,0.441581606,
+phase1plus_consensus_nelson_sensitivity,stacked_final_with_nelson_target_bootstrap_v5,GroupKFold(target_id); target-bootstrap CI,10685,336,792,0.602419891,0.555147304,0.645442836,0.030267300,0.244047619,0.076779026,2.907023209,0.002796992,0.031976865
+phase1plus_consensus_nelson_sensitivity,logreg_final_with_nelson_target_bootstrap_v5,GroupKFold(target_id); target-bootstrap CI,10685,336,792,0.612308413,0.564823747,0.654456339,0.243028301,0.238095238,0.074906367,2.813963015,0.428945745,0.041253986
+random_target_rank_control,random_target_rank_control_v5,2000 random target ranks; seed 42,10685,336,792,0.500579550,0.459113433,0.544926076,,0.101190476,0.031835206,1.013772106,,
+prevalence_control,prevalence_only_control_v5,constant cohort prevalence,10685,336,792,0.500000000,,,0.030457104,,,,0.000000000,
+historical_phase1plus_pre_unambiguous,stacked_final_no_nelson_v1,GroupKFold(target_id),13821,404,1086,0.652988358,0.622185580,0.679833835,0.028096371,0.257425743,0.075253256,3.120250844,0.001064794,
+historical_phase1plus_pre_unambiguous,logreg_final_no_nelson_v1,GroupKFold(target_id),13821,404,1086,0.643348692,0.612797038,0.672710466,0.233225111,0.207920792,0.060781476,2.362689942,0.420943958,
 phase2plus,full_logreg_no_nelson,GroupKFold(target_id),8130,404,970,0.639157865,,,,,,,,0.000000000
 phase2plus,ablate_A_genetics,GroupKFold(target_id),8130,404,970,0.620380777,,,,,,,,-0.018777088
 phase2plus,ablate_B_mechanistic,GroupKFold(target_id),8130,404,970,0.626140869,,,,,,,,-0.013016995

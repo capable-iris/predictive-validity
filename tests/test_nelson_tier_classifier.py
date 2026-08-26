@@ -56,6 +56,7 @@ class NelsonTierClassifierTests(unittest.TestCase):
         self.assertNotIn("highest_phase", sql)
         self.assertIn("ip_type", sql)
         self.assertIn("genomic", sql)
+        self.assertIn("v_drug_target_consensus", sql)
 
     def test_dossier_and_prompt_preserve_all_documents_when_under_budget(self):
         pair = nelson.Pair(10, "GENE1", 20, "Disease A")
@@ -185,6 +186,7 @@ class NelsonTierClassifierTests(unittest.TestCase):
                 "supporting_pmids": [],
             }),
             model="test-model",
+            provider="test",
             provider_request_id="request-1",
             system_prompt=nelson.SYSTEM_PROMPT,
             user_prompt="rendered prompt",

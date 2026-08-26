@@ -35,7 +35,7 @@ DB_URL = os.environ["DATABASE_URL"]
 
 
 def log_transform_features(X, feature_names):
-    """Log-transform known count features to reduce skew."""
+    """Log-transform observed counts while preserving unknown values."""
     COUNT_FEATURES = ["gwas_n_sig", "mendelian_n", "mendelian_n_dominant",
                       "mendelian_n_recessive", "family_approved_count",
                       "gene_approved_count", "n_causal_diseases",
@@ -49,7 +49,10 @@ def log_transform_features(X, feature_names):
     X_new = X.copy()
     for i, name in enumerate(feature_names):
         if name in COUNT_FEATURES:
-            X_new[:, i] = np.log1p(np.maximum(0, np.nan_to_num(X_new[:, i], nan=0)))
+            values = X_new[:, i]
+            observed = np.isfinite(values)
+            values[~observed] = np.nan
+            values[observed] = np.log1p(np.maximum(0, values[observed]))
     return X_new
 
 

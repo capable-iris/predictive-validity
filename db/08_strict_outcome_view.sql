@@ -18,8 +18,14 @@ WITH ti_program_outcomes AS (
       WHERE a.drug_id = p.drug_id AND a.indication_id = p.indication_id
     ) AS approved_this_indication
   FROM preclin.program p
-  JOIN preclin.v_drug_target dt ON dt.drug_id = p.drug_id AND dt.role = 'primary'
+  JOIN preclin.v_drug_target_consensus dt
+    ON dt.drug_id = p.drug_id AND dt.role = 'primary'
+  JOIN preclin.drug d ON d.drug_id = p.drug_id
+  JOIN public.targets t ON t.id = dt.target_id
   JOIN preclin.program_outcome po ON po.program_id = p.program_id
+  WHERE d.is_placebo IS NOT TRUE
+    AND (t.pathogen_type IS NULL OR t.pathogen_type = '')
+    AND t.ip_type IS DISTINCT FROM 'Genomic'
 ),
 ti_rollup AS (
   SELECT
@@ -43,6 +49,6 @@ ti_rollup AS (
 SELECT * FROM ti_rollup;
 
 COMMENT ON VIEW preclin.v_target_indication_strict_outcome IS
-'Two ground-truth variants per T-I: strict (approved for THIS indication) and loose (any approval on this drug).';
+'Target-indication outcomes from non-placebo programs with one uniquely best-supported primary-target consensus. Strict means approved for THIS indication; loose means any approval on the drug.';
 
 COMMIT;

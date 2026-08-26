@@ -40,6 +40,7 @@ PHASE1_SQL = """
     WHERE s.max_phase_reached >= 1
       AND (t.pathogen_type IS NULL OR t.pathogen_type = '')
       AND s.outcomes_broad_all NOT SIMILAR TO 'in_dev%%'
+    ORDER BY s.target_id, s.indication_id
 """
 
 

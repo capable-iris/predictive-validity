@@ -43,4 +43,5 @@ catboost_info/
 
 # Generated target-report artifacts and local scratch space
 /output/
+/reports/
 /tmp/

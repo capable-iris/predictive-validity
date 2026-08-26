@@ -256,7 +256,7 @@ def all_clinical_pairs(cur, limit: int | None = None) -> list[Pair]:
           d.drug_id, d.display_name AS drug_name, d.modality,
           COALESCE(dt.mechanism, d.mechanism) AS mechanism
         FROM preclin.program p
-        JOIN preclin.v_drug_target dt
+        JOIN preclin.v_drug_target_consensus dt
           ON dt.drug_id = p.drug_id AND dt.role = 'primary'
         JOIN preclin.drug d ON d.drug_id = p.drug_id
         JOIN public.targets t ON t.id = dt.target_id

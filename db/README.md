@@ -82,6 +82,72 @@ before network transfer. The original UTF-8 byte length and SHA-256 remain in
 `llm_run`; `restore_user_prompt()` in `13_ingest_llm_outputs.py` reads either
 the compressed representation or legacy plain text.
 
+Migration 21 removes arbitrary target attribution from target-level outcomes.
+It excludes explicit FDA-approval target mappings, then selects a target only
+when source priority, confidence, and independent-source corroboration leave
+one uniquely strongest candidate; exact strongest ties remain unresolved. It
+also excludes placebo, pathogen, and genomic targets from the strict outcome
+view:
+
+```bash
+.venv/bin/dotenv run -- sh -c \
+  'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f db/21_consensus_target_outcomes.sql'
+```
+
+Migration 22 removes synthetic HPO and Open Targets somatic zero rows created
+by the historical `fill_gaps` backfill. Raw absence remains absent in
+`evidence_score`; model assembly interprets it as zero recorded qualifying
+evidence without claiming that the source reported a literal zero:
+
+```bash
+.venv/bin/dotenv run -- sh -c \
+  'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f db/22_remove_synthetic_genetic_zeros.sql'
+```
+
+Migration 23 collapses repeated imports of each versioned target-level IMPC
+summary and adds a partial unique index that makes future IMPC imports
+idempotent despite their `NULL subject_id2`:
+
+```bash
+.venv/bin/dotenv run -- sh -c \
+  'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f db/23_deduplicate_impc_evidence.sql'
+```
+
+Migration 24 imports the pinned DR24 audit for Phase 1+ targets absent from the
+2025 IMPC summary. It removes the blanket-zero backfill, records an explicit
+phenotyping/mapping status for every audited target, and assigns numeric zero
+only to one-to-one mappings with no significant MP term and at least 13
+successful homozygous procedures:
+
+```bash
+# Validate the pinned CSV and show the exact transition without database writes.
+.venv/bin/dotenv run -- .venv/bin/python db/24_ingest_impc_dr24.py --dry-run
+
+# Apply the audited transition.
+.venv/bin/dotenv run -- .venv/bin/python db/24_ingest_impc_dr24.py
+```
+
+The immutable target-level audit is `data/impc_missing_update_dr24.csv`; the
+generated before/after ledger is `data/impc_dr24_feature_changes.csv`.
+
+Migration 25 adds normalized ChEMBL release provenance, exact human
+single-protein target mappings, and molecule-level first-approval events. The
+latest-release view retains mapped targets without qualifying approval events
+as explicit `NULL` controls. Refreshing is deliberate and writes directly to
+PostgreSQL; no analysis-side JSON cache is required:
+
+```bash
+.venv/bin/dotenv run -- sh -c \
+  'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f db/25_chembl_target_approval_history.sql'
+.venv/bin/dotenv run -- .venv/bin/python \
+  analyses/approval-evidence-effect/fetch_chembl_target_approval_history.py --dry-run
+.venv/bin/dotenv run -- .venv/bin/python \
+  analyses/approval-evidence-effect/fetch_chembl_target_approval_history.py
+```
+
+These records are target–molecule history, not exact target–indication
+regulatory outcomes, and therefore remain separate from `preclin.approval`.
+
 ## Cohort-wide genetics tiers
 
 `analyses/classifiers/nelson_tier_classify.py --all-clinical` enumerates all
@@ -140,6 +206,9 @@ must be used for an established database instead of rerunning the bootstrap
 | `preclin.program_trial` | 88,999 | Program → CT.gov trial junction |
 | `preclin.program_outcome` | 76,974 | Rollup: approved / efficacy_fail / silent_kill / etc. |
 | `preclin.approval` | 544 | FDA approvals with Nelson tier |
+| `preclin.chembl_target_approval_release` | 1 | Versioned ChEMBL import provenance |
+| `preclin.chembl_target_mapping` | 513 | ChEMBL human single-protein mappings for clinical targets |
+| `preclin.chembl_target_approval_event` | 1,442 | Distinct direct approved molecule–target mechanisms |
 | `preclin.evidence_score` | ~250,000 | LONG-form evidence facts |
 | `preclin.classification` | ~13,000 | LLM outputs (why_stopped, silent-kill, target resolution) |
 | `preclin.llm_run` | varies | Append-only exact prompt/response records behind classifications and evidence facts |

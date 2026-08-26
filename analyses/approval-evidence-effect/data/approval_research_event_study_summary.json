@@ -1,0 +1,472 @@
+{
+  "analysis": "approval-associated target research event study",
+  "audit": {
+    "ambiguous_drugs_excluded": 2194,
+    "analysis_end_year": 2025,
+    "analysis_start_year": 2016,
+    "approval_history_chembl_version": "ChEMBL_37",
+    "approval_history_database_view": "preclin.v_chembl_target_first_approval",
+    "approval_history_distinct_supporting_mechanisms": 1442,
+    "approval_history_mapping_policy": "Homo sapiens SINGLE PROTEIN target mapped by exact ChEMBL GENE_SYMBOL synonym; approved max_phase=4 mechanism with direct_interaction=1; target event is minimum molecule first_approval",
+    "approval_history_release_date": "2026-05-01",
+    "approval_history_source": "ChEMBL Data Web Services",
+    "approval_history_source_url": "https://www.ebi.ac.uk/chembl/api/data",
+    "dated_clinical_targets_before_chembl_mapping": 655,
+    "dated_clinical_targets_with_chembl_mapping": 512,
+    "gwas_studies_with_associations": 60589,
+    "gwas_studies_with_dates": 60589,
+    "mapped_primary_drugs": 5081,
+    "targets_ever_approved": 232,
+    "unambiguously_resolved_drugs": 2887
+  },
+  "bootstrap_iterations": 5000,
+  "causal_warning": "Approval is not exogenous. Estimates are approval-associated changes; pre-trends and research begun before publication limit causal interpretation.",
+  "cohort_years": [
+    2019,
+    2020,
+    2021,
+    2022
+  ],
+  "estimand": "cohort-weighted difference-in-differences change relative to event year -1; target-cluster percentile bootstrap",
+  "event_times": [
+    -3,
+    -2,
+    0,
+    1,
+    2,
+    3
+  ],
+  "post_summary_event_times": [
+    1,
+    2,
+    3
+  ],
+  "random_seed": 42,
+  "reference_event_time": -1,
+  "results": [
+    {
+      "control_group": "not_yet_approved",
+      "dynamic": {
+        "-2": {
+          "counterfactual_mean": 3.203031809121814,
+          "event_time": -2,
+          "log1p_att": -0.0773855435981752,
+          "mean_controls": 263.20588235294116,
+          "observed_mean": 3.9411764705882355,
+          "raw_att": 0.7381446614664212,
+          "treated_targets": 34
+        },
+        "-3": {
+          "counterfactual_mean": 2.7589274047298242,
+          "event_time": -3,
+          "log1p_att": -0.023254781523589854,
+          "mean_controls": 263.20588235294116,
+          "observed_mean": 3.11764705882353,
+          "raw_att": 0.358719654093705,
+          "treated_targets": 34
+        },
+        "0": {
+          "counterfactual_mean": 7.959531017952799,
+          "event_time": 0,
+          "log1p_att": 0.2033781198037273,
+          "mean_controls": 263.20588235294116,
+          "observed_mean": 9.441176470588236,
+          "raw_att": 1.4816454526354352,
+          "treated_targets": 34
+        },
+        "1": {
+          "counterfactual_mean": 7.245603133679851,
+          "event_time": 1,
+          "log1p_att": 0.07403026475179181,
+          "mean_controls": 256.67647058823525,
+          "observed_mean": 8.470588235294118,
+          "raw_att": 1.224985101614267,
+          "treated_targets": 34
+        },
+        "2": {
+          "counterfactual_mean": 6.895082178946477,
+          "event_time": 2,
+          "log1p_att": 0.03004737391518185,
+          "mean_controls": 248.85294117647058,
+          "observed_mean": 9.058823529411764,
+          "raw_att": 2.163741350465289,
+          "treated_targets": 34
+        },
+        "3": {
+          "counterfactual_mean": 8.65869229122691,
+          "event_time": 3,
+          "log1p_att": 0.22808371936234784,
+          "mean_controls": 244.73529411764704,
+          "observed_mean": 13.323529411764707,
+          "raw_att": 4.664837120537796,
+          "treated_targets": 34
+        }
+      },
+      "leave_one_treated_target_out": {
+        "maximum_cumulative_excess": 9.368242644953227,
+        "maximum_when_removed": "SOST",
+        "minimum_cumulative_excess": 6.457091409789098,
+        "minimum_when_removed": "AHR"
+      },
+      "outcome": "gwas_studies",
+      "pretrend_wald_chi2": 0.3834803578712212,
+      "pretrend_wald_p": 0.825521328460104,
+      "summary": {
+        "approval_year_raw_att": 1.4816454526354352,
+        "cumulative_counterfactual_records_years_1_to_3": 22.799377603853237,
+        "cumulative_excess_records_years_1_to_3": 8.053563572617353,
+        "cumulative_observed_records_years_1_to_3": 30.85294117647059,
+        "mean_annual_raw_att_years_1_to_3": 2.684521190872451,
+        "mean_log1p_att_years_1_to_3": 0.1107204526764405
+      },
+      "summary_95pct_intervals": {
+        "approval_year_raw_att": [
+          -3.0027828585706624,
+          4.815132297713222
+        ],
+        "cumulative_counterfactual_records_years_1_to_3": [
+          13.781137030555541,
+          31.53195503583941
+        ],
+        "cumulative_excess_records_years_1_to_3": [
+          -0.025892934603085012,
+          18.1570186216695
+        ],
+        "cumulative_observed_records_years_1_to_3": [
+          20.17047619047619,
+          43.12572115384615
+        ],
+        "mean_annual_raw_att_years_1_to_3": [
+          -0.008630978201028337,
+          6.052339540556501
+        ],
+        "mean_log1p_att_years_1_to_3": [
+          -0.15721692779520174,
+          0.38161682181826995
+        ]
+      },
+      "treated_target_coverage_years_1_to_3": {
+        "targets": 34,
+        "targets_with_at_least_one_record": 34
+      }
+    },
+    {
+      "control_group": "never_approved",
+      "dynamic": {
+        "-2": {
+          "counterfactual_mean": 3.304632292008318,
+          "event_time": -2,
+          "log1p_att": -0.08559391152757342,
+          "mean_controls": 241.05882352941177,
+          "observed_mean": 3.9411764705882355,
+          "raw_att": 0.6365441785799171,
+          "treated_targets": 34
+        },
+        "-3": {
+          "counterfactual_mean": 2.8637051461468994,
+          "event_time": -3,
+          "log1p_att": -0.032323606239590505,
+          "mean_controls": 241.05882352941177,
+          "observed_mean": 3.11764705882353,
+          "raw_att": 0.25394191267663024,
+          "treated_targets": 34
+        },
+        "0": {
+          "counterfactual_mean": 8.05333311311086,
+          "event_time": 0,
+          "log1p_att": 0.20490513569094254,
+          "mean_controls": 241.05882352941177,
+          "observed_mean": 9.441176470588236,
+          "raw_att": 1.3878433574773763,
+          "treated_targets": 34
+        },
+        "1": {
+          "counterfactual_mean": 7.283964534179218,
+          "event_time": 1,
+          "log1p_att": 0.0818888909758366,
+          "mean_controls": 241.05882352941177,
+          "observed_mean": 8.470588235294118,
+          "raw_att": 1.186623701114899,
+          "treated_targets": 34
+        },
+        "2": {
+          "counterfactual_mean": 6.799211482714997,
+          "event_time": 2,
+          "log1p_att": 0.04288221997829138,
+          "mean_controls": 241.05882352941177,
+          "observed_mean": 9.058823529411764,
+          "raw_att": 2.259612046696768,
+          "treated_targets": 34
+        },
+        "3": {
+          "counterfactual_mean": 8.637882852266218,
+          "event_time": 3,
+          "log1p_att": 0.23404810603017376,
+          "mean_controls": 241.05882352941177,
+          "observed_mean": 13.323529411764707,
+          "raw_att": 4.685646559498489,
+          "treated_targets": 34
+        }
+      },
+      "leave_one_treated_target_out": {
+        "maximum_cumulative_excess": 9.433760470785574,
+        "maximum_when_removed": "SOST",
+        "minimum_cumulative_excess": 6.548785587105188,
+        "minimum_when_removed": "AHR"
+      },
+      "outcome": "gwas_studies",
+      "pretrend_wald_chi2": 0.3446461194180509,
+      "pretrend_wald_p": 0.841707207554742,
+      "summary": {
+        "approval_year_raw_att": 1.3878433574773763,
+        "cumulative_counterfactual_records_years_1_to_3": 22.721058869160434,
+        "cumulative_excess_records_years_1_to_3": 8.131882307310155,
+        "cumulative_observed_records_years_1_to_3": 30.85294117647059,
+        "mean_annual_raw_att_years_1_to_3": 2.7106274357700517,
+        "mean_log1p_att_years_1_to_3": 0.11960640566143392
+      },
+      "summary_95pct_intervals": {
+        "approval_year_raw_att": [
+          -3.336088013461487,
+          4.74820109743382
+        ],
+        "cumulative_counterfactual_records_years_1_to_3": [
+          14.285489916667272,
+          31.739689385450028
+        ],
+        "cumulative_excess_records_years_1_to_3": [
+          0.23150761367689873,
+          18.13740345614417
+        ],
+        "cumulative_observed_records_years_1_to_3": [
+          20.10328142380423,
+          43.29056451612904
+        ],
+        "mean_annual_raw_att_years_1_to_3": [
+          0.07716920455896624,
+          6.045801152048058
+        ],
+        "mean_log1p_att_years_1_to_3": [
+          -0.15048510387275987,
+          0.38156316499722104
+        ]
+      },
+      "treated_target_coverage_years_1_to_3": {
+        "targets": 34,
+        "targets_with_at_least_one_record": 34
+      }
+    },
+    {
+      "control_group": "not_yet_approved",
+      "dynamic": {
+        "-2": {
+          "counterfactual_mean": -0.012272149584856664,
+          "event_time": -2,
+          "log1p_att": 0.008516694421617088,
+          "mean_controls": 263.20588235294116,
+          "observed_mean": 0.0,
+          "raw_att": 0.012272149584856664,
+          "treated_targets": 34
+        },
+        "-3": {
+          "counterfactual_mean": -0.011857811506080196,
+          "event_time": -3,
+          "log1p_att": 0.050341677999364474,
+          "mean_controls": 263.20588235294116,
+          "observed_mean": 0.08823529411764706,
+          "raw_att": 0.10009310562372725,
+          "treated_targets": 34
+        },
+        "0": {
+          "counterfactual_mean": 0.003523603441226565,
+          "event_time": 0,
+          "log1p_att": -0.0029455590968630197,
+          "mean_controls": 263.20588235294116,
+          "observed_mean": 0.0,
+          "raw_att": -0.003523603441226565,
+          "treated_targets": 34
+        },
+        "1": {
+          "counterfactual_mean": 0.003952641355726931,
+          "event_time": 1,
+          "log1p_att": 0.03733496476034556,
+          "mean_controls": 256.67647058823525,
+          "observed_mean": 0.058823529411764705,
+          "raw_att": 0.05487088805603777,
+          "treated_targets": 34
+        },
+        "2": {
+          "counterfactual_mean": 0.011354775675433628,
+          "event_time": 2,
+          "log1p_att": 0.07345293819086683,
+          "mean_controls": 248.85294117647058,
+          "observed_mean": 0.11764705882352941,
+          "raw_att": 0.10629228314809579,
+          "treated_targets": 34
+        },
+        "3": {
+          "counterfactual_mean": 0.02132411222162882,
+          "event_time": 3,
+          "log1p_att": 0.02578006313648298,
+          "mean_controls": 244.73529411764704,
+          "observed_mean": 0.058823529411764705,
+          "raw_att": 0.037499417190135886,
+          "treated_targets": 34
+        }
+      },
+      "leave_one_treated_target_out": {
+        "maximum_cumulative_excess": 0.20675240508440823,
+        "maximum_when_removed": "TNFRSF17",
+        "minimum_cumulative_excess": 0.14488319097946964,
+        "minimum_when_removed": "C3"
+      },
+      "outcome": "clingen_classifications",
+      "pretrend_wald_chi2": 3.448035440585909,
+      "pretrend_wald_p": 0.17834815353137004,
+      "summary": {
+        "approval_year_raw_att": -0.003523603441226565,
+        "cumulative_counterfactual_records_years_1_to_3": 0.03663152925278938,
+        "cumulative_excess_records_years_1_to_3": 0.19866258839426945,
+        "cumulative_observed_records_years_1_to_3": 0.23529411764705882,
+        "mean_annual_raw_att_years_1_to_3": 0.06622086279808982,
+        "mean_log1p_att_years_1_to_3": 0.04552265536256512
+      },
+      "summary_95pct_intervals": {
+        "approval_year_raw_att": [
+          -0.01801184960610101,
+          0.012095155965570906
+        ],
+        "cumulative_counterfactual_records_years_1_to_3": [
+          -0.010412691486731476,
+          0.08544886819014684
+        ],
+        "cumulative_excess_records_years_1_to_3": [
+          0.047302394755095525,
+          0.37848722430300336
+        ],
+        "cumulative_observed_records_years_1_to_3": [
+          0.09090909090909091,
+          0.4117647058823529
+        ],
+        "mean_annual_raw_att_years_1_to_3": [
+          0.015767464918365174,
+          0.12616240810100113
+        ],
+        "mean_log1p_att_years_1_to_3": [
+          0.010821873616761063,
+          0.08695550791052716
+        ]
+      },
+      "treated_target_coverage_years_1_to_3": {
+        "targets": 34,
+        "targets_with_at_least_one_record": 7
+      }
+    },
+    {
+      "control_group": "never_approved",
+      "dynamic": {
+        "-2": {
+          "counterfactual_mean": -0.011592725894082626,
+          "event_time": -2,
+          "log1p_att": 0.00858331804530485,
+          "mean_controls": 241.05882352941177,
+          "observed_mean": 0.0,
+          "raw_att": 0.011592725894082626,
+          "treated_targets": 34
+        },
+        "-3": {
+          "counterfactual_mean": -0.00829386415481081,
+          "event_time": -3,
+          "log1p_att": 0.048863948889643925,
+          "mean_controls": 241.05882352941177,
+          "observed_mean": 0.08823529411764706,
+          "raw_att": 0.09652915827245787,
+          "treated_targets": 34
+        },
+        "0": {
+          "counterfactual_mean": 0.008690337630208968,
+          "event_time": 0,
+          "log1p_att": -0.0056129433456655565,
+          "mean_controls": 241.05882352941177,
+          "observed_mean": 0.0,
+          "raw_att": -0.008690337630208968,
+          "treated_targets": 34
+        },
+        "1": {
+          "counterfactual_mean": 0.008644028395229429,
+          "event_time": 1,
+          "log1p_att": 0.035004491834009624,
+          "mean_controls": 241.05882352941177,
+          "observed_mean": 0.058823529411764705,
+          "raw_att": 0.05017950101653528,
+          "treated_targets": 34
+        },
+        "2": {
+          "counterfactual_mean": 0.0122056026225933,
+          "event_time": 2,
+          "log1p_att": 0.07288115992563131,
+          "mean_controls": 241.05882352941177,
+          "observed_mean": 0.11764705882352941,
+          "raw_att": 0.1054414562009361,
+          "treated_targets": 34
+        },
+        "3": {
+          "counterfactual_mean": 0.021799847915157988,
+          "event_time": 3,
+          "log1p_att": 0.02546557345928174,
+          "mean_controls": 241.05882352941177,
+          "observed_mean": 0.058823529411764705,
+          "raw_att": 0.03702368149660672,
+          "treated_targets": 34
+        }
+      },
+      "leave_one_treated_target_out": {
+        "maximum_cumulative_excess": 0.20068888637149204,
+        "maximum_when_removed": "TYK2",
+        "minimum_cumulative_excess": 0.13881957942266415,
+        "minimum_when_removed": "C3"
+      },
+      "outcome": "clingen_classifications",
+      "pretrend_wald_chi2": 4.520487984504459,
+      "pretrend_wald_p": 0.10432502715082383,
+      "summary": {
+        "approval_year_raw_att": -0.008690337630208968,
+        "cumulative_counterfactual_records_years_1_to_3": 0.04264947893298072,
+        "cumulative_excess_records_years_1_to_3": 0.1926446387140781,
+        "cumulative_observed_records_years_1_to_3": 0.23529411764705882,
+        "mean_annual_raw_att_years_1_to_3": 0.06421487957135937,
+        "mean_log1p_att_years_1_to_3": 0.04445040840630756
+      },
+      "summary_95pct_intervals": {
+        "approval_year_raw_att": [
+          -0.02318719258754565,
+          0.005339042353971087
+        ],
+        "cumulative_counterfactual_records_years_1_to_3": [
+          -0.007434092180103349,
+          0.09152538757543602
+        ],
+        "cumulative_excess_records_years_1_to_3": [
+          0.032791059743111056,
+          0.37655770731276417
+        ],
+        "cumulative_observed_records_years_1_to_3": [
+          0.08333333333333333,
+          0.41379310344827586
+        ],
+        "mean_annual_raw_att_years_1_to_3": [
+          0.010930353247703686,
+          0.12551923577092142
+        ],
+        "mean_log1p_att_years_1_to_3": [
+          0.007706259879975089,
+          0.0870640924126207
+        ]
+      },
+      "treated_target_coverage_years_1_to_3": {
+        "targets": 34,
+        "targets_with_at_least_one_record": 7
+      }
+    }
+  ]
+}

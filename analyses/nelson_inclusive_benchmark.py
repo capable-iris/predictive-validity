@@ -1,9 +1,10 @@
 """Nelson-inclusive sensitivity benchmark on the headline Phase 1+ cohort.
 
-This deliberately does not alter the canonical feature list or replace the
-Nelson-excluded headline. It reruns both variants on identical 5-fold
-GroupKFold(target_id) splits, encodes the ordered T0-T3 tier as one monotonic
-numeric feature, and stores only the inclusive benchmark rows.
+It reruns both variants on the scientifically attributable cohort: non-placebo
+programs with one uniquely best-supported primary-target consensus.
+Both variants use identical 5-fold GroupKFold(target_id) splits. Nelson is an
+ordered T0-T3 feature and complete adjudication is required; missing tiers are
+never imputed as T0.
 """
 
 from __future__ import annotations
@@ -55,6 +56,7 @@ JOIN preclin.indication i ON i.indication_id = s.indication_id
 WHERE s.max_phase_reached >= 1
   AND (t.pathogen_type IS NULL OR t.pathogen_type = '')
   AND s.outcomes_broad_all NOT SIMILAR TO 'in_dev%%'
+ORDER BY s.target_id, s.indication_id
 """
 
 
@@ -62,13 +64,6 @@ def encode_nelson_tiers(rows) -> np.ndarray:
     values = []
     for row in rows:
         tier = row.get("nelson_tier")
-        if tier is None:
-            # The frozen Nelson universe covers primary-target pairs, whereas
-            # the headline outcome view contains additional target mappings.
-            # Encode uncovered rows as T0 so model families cannot learn the
-            # coverage/missingness pattern as a separate predictor.
-            values.append(TIER_VALUE["T0"])
-            continue
         if tier not in TIER_VALUE:
             raise ValueError(
                 f"missing or invalid Nelson tier for "
@@ -194,12 +189,14 @@ def main():
     stacked_nelson = _final.group_stacked_cv(X_nelson, y, groups, nelson_ctors)
     report_pair("Stacked", y, groups, stacked_base, stacked_nelson)
     _ml.eval_and_store(
-        "stacked_final_with_nelson_v1", stacked_nelson, y,
-        "ti_phase1plus_strict_holdout_target_with_nelson",
-        "Sensitivity analysis: uniform target-indication Nelson T0-T3 encoded "
-        "as one ordered monotonic feature; same Phase 1+ strict cohort and "
-        "GroupKFold(target_id) as headline; uncovered Nelson pairs forced to T0 "
-        "to suppress coverage signal; current-day evidence dates remain a caveat",
+        "stacked_final_with_nelson_target_bootstrap_v5", stacked_nelson, y,
+        "ti_phase1plus_strict_consensus_target_with_nelson_impc_dr24",
+        "Complete-case Nelson sensitivity: non-placebo programs with one "
+        "uniquely best-supported primary-target consensus; complete T0-T3 "
+        "adjudication; ordered feature; GroupKFold(target_id); current-day evidence; "
+        "unknown non-Nelson measurements fold-locally imputed; audited IMPC "
+        "DR24 update with tested-negative zeros only",
+        groups=groups,
     )
 
     print("Running paired LogReg held-out-target evaluations ...", flush=True)
@@ -207,11 +204,12 @@ def main():
     logreg_nelson = grouped_logreg_oof(X_nelson, y, groups)
     report_pair("LogReg", y, groups, logreg_base, logreg_nelson)
     _ml.eval_and_store(
-        "logreg_final_with_nelson_v1", logreg_nelson, y,
-        "ti_phase1plus_strict_holdout_target_with_nelson",
-        "Sensitivity analysis: LogReg L2 with uniform target-indication Nelson "
-        "T0-T3 as one ordered feature; uncovered pairs forced to T0; "
-        "GroupKFold(target_id), Phase 1+ strict",
+        "logreg_final_with_nelson_target_bootstrap_v5", logreg_nelson, y,
+        "ti_phase1plus_strict_consensus_target_with_nelson_impc_dr24",
+        "Complete-case Nelson sensitivity: LogReg L2 with ordered T0-T3; "
+        "uniquely best-supported primary-target consensus; GroupKFold(target_id), "
+        "Phase 1+ strict; audited IMPC DR24 update with tested-negative zeros only",
+        groups=groups,
     )
 
 
