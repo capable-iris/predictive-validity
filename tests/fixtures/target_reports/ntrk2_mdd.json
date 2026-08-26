@@ -4,6 +4,7 @@
     "name": "neurotrophic receptor tyrosine kinase 2 (TrkB)",
     "aliases": ["TrkB", "TRKB"],
     "indication": "major depressive disorder",
+    "phenotype_scope": "target-wide",
     "as_of": "2026-08-20"
   },
   "assessment": {
@@ -100,40 +101,79 @@
     {
       "modality": "Oral CNS small-molecule PAM",
       "rank": 1,
-      "pros": [
-        "ACD856 achieved oral exposure, CSF penetration, and dose-related qEEG changes in healthy volunteers.",
-        "ACD856's ligand-dependent PAM design may preserve endogenous activity and tissue gating."
+      "first_principles": [
+        {
+          "basis": "Observed - target-specific",
+          "claim": "ACD856 achieved oral exposure, CSF penetration, and dose-related qEEG changes in healthy volunteers.",
+          "sources": ["S10"]
+        },
+        {
+          "basis": "First-principles inference",
+          "claim": "A ligand-dependent CNS PAM could preserve endogenous activity and tissue gating while avoiding full receptor drive.",
+          "sources": ["S10", "S11"]
+        }
       ],
-      "cons": [
-        "ACD856 has no MDD patient efficacy data and is pan-Trk rather than TrkB-selective.",
-        "7,8-DHF saw broad rodent use, but independent assays disputed direct TrkB agonism."
-      ],
+      "evidence_boundary": "No MDD efficacy or selective TrkB engagement is verified; ACD856 is pan-Trk.",
+      "key_risk": "Apparent neurotrophin phenotypes may reflect polypharmacology or excessive Trk signaling.",
+      "decisive_experiment": "Measure cellular TrkB occupancy and ligand-dependent signaling versus TrkA/TrkC across a concentration series.",
+      "patent_differentiation": {
+        "burden": "Unknown",
+        "claim_landscape": "No claim-scope and legal-status review was completed for this fixture.",
+        "differentiation_needed": "Obtain a jurisdiction-specific claim chart before selecting chemistry, binding site, or use claims.",
+        "sources": ["S10"]
+      },
       "sources": ["S10", "S11", "S15"]
     },
     {
       "modality": "Agonist antibody or BDNF ligand",
       "rank": 2,
-      "pros": [
-        "TAM-163 and BI 754132 showed that direct extracellular TrkB agonist antibodies are technically feasible.",
-        "r-metHuBDNF provided direct ligand exposure in human development programs."
+      "first_principles": [
+        {
+          "basis": "Observed - target-specific",
+          "claim": "TAM-163 and BI 754132 demonstrate technically feasible extracellular TrkB agonist antibodies.",
+          "sources": ["S12", "S13"]
+        },
+        {
+          "basis": "First-principles inference",
+          "claim": "Extracellular receptor access permits a selective agonist biologic if CNS delivery can be solved.",
+          "sources": ["S12", "S13", "S14"]
+        }
       ],
-      "cons": [
-        "TAM-163 stopped for sensory symptoms and BI 754132 after ischemic optic neuropathy.",
-        "r-metHuBDNF failed ALS Phase 3, while conventional biologics remain poor at crossing the blood-brain barrier."
-      ],
+      "evidence_boundary": "Target engagement in human brain and a clinically validated CNS delivery route remain unverified.",
+      "key_risk": "Poor BBB exposure plus sensory or ocular toxicity from peripheral or excessive TrkB activation.",
+      "decisive_experiment": "Compare brain exposure, pTrkB engagement, and peripheral safety after systemic versus shuttle-enabled dosing.",
+      "patent_differentiation": {
+        "burden": "Unknown",
+        "claim_landscape": "No claim-scope and legal-status review was completed for this fixture.",
+        "differentiation_needed": "Obtain a jurisdiction-specific claim chart before selecting sequence, epitope, shuttle, or use claims.",
+        "sources": ["S12"]
+      },
       "sources": ["S12", "S13", "S14"]
     },
     {
       "modality": "Claimed TrkB-binding psychoplastogen",
       "rank": 3,
-      "pros": [
-        "Esketamine met Phase 2 TRD endpoints, providing human efficacy for a claimed TrkB-binding psychoplastogen.",
-        "Fluoxetine and ketamine showed reported Y433-dependent TrkB interactions in one research program."
+      "first_principles": [
+        {
+          "basis": "Observed - target-specific",
+          "claim": "Fluoxetine and ketamine showed reported Y433-dependent TrkB interactions in one research program.",
+          "sources": ["S5", "S9"]
+        },
+        {
+          "basis": "First-principles inference",
+          "claim": "A membrane-embedded TrkB interaction site could permit CNS-active small molecules distinct from orthosteric agonists.",
+          "sources": ["S5", "S9"]
+        }
       ],
-      "cons": [
-        "Esketamine's established pharmacology is polypharmacologic, not TrkB-selective.",
-        "No fluoxetine or ketamine program has clinical TrkB engagement or genotype-response validation."
-      ],
+      "evidence_boundary": "Independent direct binding and clinical TrkB engagement are absent; esketamine is polypharmacologic.",
+      "key_risk": "The reported interaction may be indirect, nonselective, or irrelevant at therapeutic free exposure.",
+      "decisive_experiment": "Run orthogonal membrane binding and Y433-dependent signaling at clinically relevant unbound concentrations.",
+      "patent_differentiation": {
+        "burden": "Unknown",
+        "claim_landscape": "No claim-scope and legal-status review was completed for this fixture.",
+        "differentiation_needed": "Obtain a jurisdiction-specific claim chart before selecting scaffold, binding site, or indication claims.",
+        "sources": ["S5"]
+      },
       "sources": ["S5", "S9", "S18"]
     }
   ],
@@ -266,6 +306,12 @@
       "setup_difficulty_score": 2,
       "setup": "Develop: licensed knock-in colony, blinded behavior, exposure and locomotor controls",
       "phase2_precedent": "Qualified ketamine chain: assay preceded positive ELEKT-D Phase 2/3; it does not prove exclusive TrkB causality.",
+      "species_conservation": {
+        "receptor": "Mouse and human TrkB share the proposed transmembrane motif; Y433F directly tests that site.",
+        "pathway": "TrkB-linked behavioral circuitry is only partly conserved across species and stress context.",
+        "translation": "Bridge genotype effects to human TrkB binding and signaling before interpreting efficacy.",
+        "sources": ["S5"]
+      },
       "sources": ["S5", "S19"]
     },
     {
@@ -281,6 +327,12 @@
       "setup_difficulty_score": 2,
       "setup": "Develop: stress colony, blinded behavior, PFC/CA3/DG dissection and quantitative phospho-immunoblot",
       "phase2_precedent": "Qualified S-ketamine chain: assay preceded positive Phase 2 completion, but engagement was indirect.",
+      "species_conservation": {
+        "receptor": "Human and mouse TrkB share BDNF-responsive kinase signaling; drug binding remains unverified.",
+        "pathway": "Stress-linked regional pTrkB is conserved conceptually, but human disease circuitry and endpoint mapping are indirect.",
+        "translation": "Use human neuronal pharmacodynamic assays to bridge regional mouse pTrkB and behavior.",
+        "sources": ["S17", "S18"]
+      },
       "sources": ["S17", "S18"]
     },
     {
@@ -296,6 +348,12 @@
       "setup_difficulty_score": 2,
       "setup": "Develop: breeding, induction, neurogenesis histology, exposure and behavioral controls",
       "phase2_precedent": "None verified; the model supports pathway causality, not prospective drug translation.",
+      "species_conservation": {
+        "receptor": "Mouse Ntrk2 deletion tests conserved TrkB biology but not cross-species activity of a proposed modality.",
+        "pathway": "Adult neurogenesis and antidepressant response differ quantitatively between mouse and human.",
+        "translation": "Treat as pathway-causality evidence and bridge with human progenitor or neuronal assays.",
+        "sources": ["S4"]
+      },
       "sources": ["S4"]
     }
   ],

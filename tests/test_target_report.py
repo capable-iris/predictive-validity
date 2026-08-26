@@ -48,6 +48,8 @@ class TargetReportTests(unittest.TestCase):
     def test_sample_satisfies_report_contract(self) -> None:
         report = validate_report.validate_data(copy.deepcopy(self.sample))
         self.assertEqual(report["target"]["symbol"], "NTRK2")
+        self.assertEqual(report["target"]["phenotype_scope"], "target-wide")
+        self.assertTrue(any("obesity" in row["phenotype"].lower() for row in report["phenotypes"]))
         self.assertIn(
             "Human PD", {row["category"] for row in report["phenotypes"]}
         )
@@ -62,6 +64,40 @@ class TargetReportTests(unittest.TestCase):
         missing_direction["phenotypes"][0].pop("effect_direction")
         with self.assertRaises(validate_report.ReportValidationError):
             validate_report.validate_data(missing_direction)
+
+        focal_scope = copy.deepcopy(self.sample)
+        focal_scope["target"]["phenotype_scope"] = "focal-indication"
+        with self.assertRaises(validate_report.ReportValidationError):
+            validate_report.validate_data(focal_scope)
+
+    def test_modality_requires_observed_premise_and_explicit_inference(self) -> None:
+        legacy = copy.deepcopy(self.sample)
+        modality = legacy["modalities"][0]
+        modality["pros"] = ["Historical program only"]
+        with self.assertRaises(validate_report.ReportValidationError):
+            validate_report.validate_data(legacy)
+
+        no_inference = copy.deepcopy(self.sample)
+        no_inference["modalities"][0]["first_principles"] = [
+            {
+                "basis": "Observed - target-specific",
+                "claim": "A cited observation without an explicit derived modality conclusion.",
+                "sources": ["S10"],
+            }
+        ]
+        with self.assertRaises(validate_report.ReportValidationError):
+            validate_report.validate_data(no_inference)
+
+    def test_contract_requires_patent_distance_and_in_vivo_conservation(self) -> None:
+        no_patent_distance = copy.deepcopy(self.sample)
+        no_patent_distance["modalities"][0].pop("patent_differentiation")
+        with self.assertRaises(validate_report.ReportValidationError):
+            validate_report.validate_data(no_patent_distance)
+
+        no_conservation = copy.deepcopy(self.sample)
+        no_conservation["in_vivo_assays"][0].pop("species_conservation")
+        with self.assertRaises(validate_report.ReportValidationError):
+            validate_report.validate_data(no_conservation)
 
     def test_renderer_emits_two_analysis_pages_and_source_appendix(self) -> None:
         sys.path.insert(0, str(SCRIPTS))

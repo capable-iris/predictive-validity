@@ -102,6 +102,29 @@ def bullet_p(items: list[str], source_text: str, size: float = 5.9) -> Paragraph
     return rich_p("<br/>".join(lines), size)
 
 
+def modality_case_cell(row: dict) -> Paragraph:
+    lines = []
+    for claim in row["first_principles"]:
+        basis = html.escape(ascii_text(claim["basis"]))
+        statement = html.escape(ascii_text(claim["claim"]))
+        lines.append(f"<b>{basis}:</b> {statement} {html.escape(refs(claim))}")
+    return rich_p("<br/>".join(lines), 5.15)
+
+
+def modality_decision_cell(row: dict) -> Paragraph:
+    patent = row["patent_differentiation"]
+    markup = (
+        f"<b>Boundary:</b> {html.escape(ascii_text(row['evidence_boundary']))}<br/>"
+        f"<b>Key risk:</b> {html.escape(ascii_text(row['key_risk']))}<br/>"
+        f"<b>Reject with:</b> {html.escape(ascii_text(row['decisive_experiment']))} {html.escape(refs(row))}<br/>"
+        f"<b>Patent burden - {html.escape(ascii_text(patent['burden']))}:</b> "
+        f"{html.escape(ascii_text(patent['claim_landscape']))}<br/>"
+        f"<b>Differentiate:</b> {html.escape(ascii_text(patent['differentiation_needed']))} "
+        f"{html.escape(refs(patent))}"
+    )
+    return rich_p(markup, 4.8)
+
+
 def assay_call_cell(row: dict) -> Paragraph:
     markup = (
         f"<b>{html.escape(ascii_text(row['assay']))}</b><br/>"
@@ -120,6 +143,15 @@ def model_availability_cell(row: dict) -> Paragraph:
         f"<b>{MODEL_AVAILABILITY[row['model_availability_score']]}:</b> "
         f"{html.escape(ascii_text(row['model_availability']))}"
     )
+    if "species_conservation" in row:
+        conservation = row["species_conservation"]
+        markup += (
+            f"<br/><b>Receptor:</b> {html.escape(ascii_text(conservation['receptor']))}"
+            f"<br/><b>Pathway:</b> {html.escape(ascii_text(conservation['pathway']))}"
+            f"<br/><b>Translate:</b> {html.escape(ascii_text(conservation['translation']))} "
+            f"{html.escape(refs(conservation))}"
+        )
+        return rich_p(markup, 4.65)
     return rich_p(markup, 5.15)
 
 
@@ -311,8 +343,8 @@ def draw_header(canvas: Canvas, report: dict) -> float:
 def draw_page_one(canvas: Canvas, report: dict) -> None:
     y = draw_header(canvas, report)
     y = draw_section_title(
-        canvas, "Phenotype evidence", y,
-        "Strength: Strong / Moderate / Limited / Gap",
+        canvas, "Target-wide phenotype evidence", y,
+        "Indication-agnostic | Strength: Strong / Moderate / Limited / Gap",
     )
     phenotype_rows = []
     for row in sorted(report["phenotypes"], key=lambda item: (EVIDENCE_ORDER[item["category"]], -item["score"])):
@@ -331,9 +363,9 @@ def draw_page_one(canvas: Canvas, report: dict) -> None:
         ["Phenotype / effect", "Modulation / result", "Type / strength", "Evidence", "Tissue"],
         phenotype_rows,
         [96, 121, 70, 315, 118],
-        font_size=6.1,
+        font_size=5.8,
         max_height=160,
-        padding_y=1.6,
+        padding_y=1.0,
     )
 
     y = draw_section_title(canvas, "Modality strategy", y)
@@ -342,18 +374,18 @@ def draw_page_one(canvas: Canvas, report: dict) -> None:
         modality_rows.append(
             [
                 f"{row['rank']}. {row['modality']}",
-                bullet_p(row["pros"], refs(row)),
-                bullet_p(row["cons"], refs(row)),
+                modality_case_cell(row),
+                modality_decision_cell(row),
             ]
         )
     y = draw_table(
         canvas,
         y,
-        ["Rank / modality", "Evidence-backed pros", "Evidence-backed cons"],
+        ["Rank / modality", "First-principles case", "Evidence, risk, test and patent distance"],
         modality_rows,
-        [145, 287.5, 287.5],
-        font_size=5.9,
-        max_height=120,
+        [135, 302.5, 282.5],
+        font_size=5.55,
+        max_height=182,
         padding_y=1.6,
     )
 
@@ -369,16 +401,18 @@ def draw_page_one(canvas: Canvas, report: dict) -> None:
                 row["indication"], f"{status} {refs(row)}",
             ]
         )
-    draw_table(
+    y = draw_table(
         canvas,
         y,
         ["Candidate", "Modality", "Sponsor", "Route", "Directness", "Indication", "Status / reason"],
         candidate_rows,
         [90, 72, 92, 58, 58, 90, 260],
-        font_size=5.65,
+        font_size=5.2,
         max_height=max(154, y - 25),
-        padding_y=1.7,
+        padding_y=1.05,
     )
+    if y < 24:
+        raise ValueError(f"Page 1 content enters footer area ({y:.1f} < 24); shorten report JSON")
 
 
 def _node_position(node: dict, x: float, y: float, width: float, height: float) -> tuple[float, float]:
@@ -490,10 +524,14 @@ def draw_rating_key(canvas: Canvas, y: float) -> float:
             "Setup effort",
             "Routine = off-the-shelf; Qualify = published protocol needs local qualification; Specialist = breeding/differentiation/aging/surgery; Develop = de novo engineering and validation.",
         ],
+        [
+            "Patent burden",
+            "Low / Moderate / High = scoped technical design-around burden; Unknown = insufficient detail. Planning screen only - not a claim chart, FTO, or opinion on non-infringement, validity, enforceability, ownership, or clearance; counsel must review each jurisdiction.",
+        ],
     ]
     return draw_table(
         canvas, y, ["Display", "Meaning"], rows, [105, 615],
-        font_size=5.6, max_height=62, padding_y=2.0,
+        font_size=5.45, max_height=82, padding_y=1.8,
     )
 
 
@@ -517,14 +555,15 @@ def draw_page_two(canvas: Canvas, report: dict) -> None:
                     model_availability_cell(row), setup_precedent_cell(row),
                 ]
             )
+        is_in_vivo = key == "in_vivo_assays"
         y = draw_table(
             canvas,
             y,
             ["Readout method", "Exact assay and decision rule", "Mechanism tested", "Model / availability", "Setup / Phase 2 precedent"],
             rows,
-            [82, 205, 112, 145, 176],
+            [78, 190, 102, 198, 152] if is_in_vivo else [82, 205, 112, 145, 176],
             font_size=5.3,
-            max_height=155,
+            max_height=198 if is_in_vivo else 155,
             padding_y=1.8,
         )
     y = draw_section_title(canvas, "Mechanism", y)

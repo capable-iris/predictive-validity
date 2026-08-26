@@ -46,6 +46,12 @@ MODULATIONS = {
     "unclear",
 }
 EFFECT_DIRECTIONS = {"increase", "decrease", "mixed", "unclear", "no change"}
+MODALITY_BASES = {
+    "Observed - target-specific",
+    "Observed - analogous target/class",
+    "First-principles inference",
+}
+PATENT_BURDENS = {"Low", "Moderate", "High", "Unknown"}
 BAD_DASHES = {"\u2010", "\u2011", "\u2012", "\u2013", "\u2014", "\u2212"}
 
 
@@ -145,10 +151,13 @@ def validate_data(data: Any) -> dict[str, Any]:
     known_sources = set(source_ids)
 
     target = _require_dict(root.get("target"), "target", errors)
-    _keys(target, {"symbol", "name", "aliases", "indication", "as_of"}, "target", errors)
+    _keys(target, {"symbol", "name", "aliases", "indication", "phenotype_scope", "as_of"}, "target", errors)
     _text(target, "symbol", "target", errors, 30)
     _text(target, "name", "target", errors, 100)
     _text(target, "indication", "target", errors, 100)
+    phenotype_scope = _text(target, "phenotype_scope", "target", errors, 20)
+    if phenotype_scope and phenotype_scope != "target-wide":
+        errors.append("target.phenotype_scope must be 'target-wide'")
     as_of = _text(target, "as_of", "target", errors, 10)
     try:
         if as_of:
@@ -199,16 +208,55 @@ def validate_data(data: Any) -> dict[str, Any]:
     for index, raw in enumerate(_require_list(root.get("modalities"), "modalities", errors)):
         path = f"modalities[{index}]"
         row = _require_dict(raw, path, errors)
-        _keys(row, {"modality", "rank", "pros", "cons", "sources"}, path, errors)
-        if "examples" in row:
-            errors.append(f"{path}.examples is not allowed; fold named program results into pros/cons")
+        _keys(
+            row,
+            {
+                "modality", "rank", "first_principles", "evidence_boundary",
+                "key_risk", "decisive_experiment", "patent_differentiation", "sources",
+            },
+            path,
+            errors,
+        )
+        for legacy in ("pros", "cons", "examples"):
+            if legacy in row:
+                errors.append(f"{path}.{legacy} is obsolete; use the prospective modality fields")
         _text(row, "modality", path, errors, 80)
         if not isinstance(row.get("rank"), int) or not 1 <= row.get("rank", 0) <= 3:
             errors.append(f"{path}.rank must be an integer from 1 to 3")
-        for key in ("pros", "cons"):
-            values = _string_list(row, key, path, errors, 3, 150)
-            if not values:
-                errors.append(f"{path}.{key} must contain at least one item")
+        claims = _require_list(row.get("first_principles"), f"{path}.first_principles", errors)
+        if not 1 <= len(claims) <= 3:
+            errors.append(f"{path}.first_principles must contain 1-3 claims")
+        bases: set[str] = set()
+        for claim_index, raw_claim in enumerate(claims):
+            claim_path = f"{path}.first_principles[{claim_index}]"
+            claim = _require_dict(raw_claim, claim_path, errors)
+            _keys(claim, {"basis", "claim", "sources"}, claim_path, errors)
+            basis = _text(claim, "basis", claim_path, errors, 40)
+            if basis and basis not in MODALITY_BASES:
+                errors.append(f"{claim_path}.basis must be one of {sorted(MODALITY_BASES)}")
+            bases.add(basis)
+            _text(claim, "claim", claim_path, errors, 150)
+            _source_refs(claim, claim_path, known_sources, errors)
+        if "First-principles inference" not in bases:
+            errors.append(f"{path}.first_principles must include a First-principles inference")
+        if not bases.intersection({"Observed - target-specific", "Observed - analogous target/class"}):
+            errors.append(f"{path}.first_principles must include an observed premise")
+        for key in ("evidence_boundary", "key_risk", "decisive_experiment"):
+            _text(row, key, path, errors, 170)
+        patent_path = f"{path}.patent_differentiation"
+        patent = _require_dict(row.get("patent_differentiation"), patent_path, errors)
+        _keys(
+            patent,
+            {"burden", "claim_landscape", "differentiation_needed", "sources"},
+            patent_path,
+            errors,
+        )
+        burden = _text(patent, "burden", patent_path, errors, 12)
+        if burden and burden not in PATENT_BURDENS:
+            errors.append(f"{patent_path}.burden must be one of {sorted(PATENT_BURDENS)}")
+        _text(patent, "claim_landscape", patent_path, errors, 150)
+        _text(patent, "differentiation_needed", patent_path, errors, 150)
+        _source_refs(patent, patent_path, known_sources, errors)
         _source_refs(row, path, known_sources, errors)
 
     phenotype_categories = {
@@ -255,7 +303,8 @@ def validate_data(data: Any) -> dict[str, Any]:
         for index, raw in enumerate(_require_list(root.get(table_name), table_name, errors)):
             path = f"{table_name}[{index}]"
             row = _require_dict(raw, path, errors)
-            _keys(row, assay_required, path, errors)
+            required = assay_required | ({"species_conservation"} if table_name == "in_vivo_assays" else set())
+            _keys(row, required, path, errors)
             for key, limit in (
                 ("method", 70), ("assay", 100), ("model", 100),
                 ("measured", 180), ("mechanism_link", 180),
@@ -273,6 +322,20 @@ def validate_data(data: Any) -> dict[str, Any]:
             availability_text = str(row.get("model_availability", ""))
             if availability_score == 3 and not re.search(r"(?:stock|catalog|cat\.?|#)\s*[:#]?\s*[A-Z0-9-]+", availability_text, re.IGNORECASE):
                 errors.append(f"{path}.model_availability must give a stock/catalog identifier for score 3")
+            if table_name == "in_vivo_assays":
+                conservation_path = f"{path}.species_conservation"
+                conservation = _require_dict(
+                    row.get("species_conservation"), conservation_path, errors
+                )
+                _keys(
+                    conservation,
+                    {"receptor", "pathway", "translation", "sources"},
+                    conservation_path,
+                    errors,
+                )
+                for key in ("receptor", "pathway", "translation"):
+                    _text(conservation, key, conservation_path, errors, 150)
+                _source_refs(conservation, conservation_path, known_sources, errors)
             _source_refs(row, path, known_sources, errors)
 
     mechanism = _require_dict(root.get("mechanism"), "mechanism", errors)
@@ -330,7 +393,7 @@ def validate_pdf(path: Path) -> None:
         raise ReportValidationError(f"PDF must contain 2 analytical pages plus 1 source appendix; found {len(reader.pages)} pages")
     page_text = [page.extract_text() or "" for page in reader.pages]
     extracted = "\n".join(page_text)
-    markers = ["Phenotype evidence", "Modality strategy", "Candidate landscape", "In vitro assays", "In vivo assays", "Mechanism", "Sources"]
+    markers = ["Target-wide phenotype evidence", "Modality strategy", "Candidate landscape", "In vitro assays", "In vivo assays", "Mechanism", "Sources"]
     missing = [marker for marker in markers if marker not in extracted]
     if missing:
         raise ReportValidationError(f"PDF text is missing sections: {', '.join(missing)}")

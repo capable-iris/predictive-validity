@@ -4,6 +4,6 @@ sandbox_mode = "read-only"
 developer_instructions = """
 Map drugs and candidates for one target as of the supplied cutoff date. Read .agents/skills/compile-target-report/references/evidence-contract.md first.
 Separate direct, claimed-direct, indirect, and disputed targeters. Verify names, modality, sponsor/owner history, route, indication, phase/status, and termination or withdrawal reason using trial registries, regulatory records, primary papers, and dated sponsor disclosures. Do not call a pathway modulator a direct targeter. State 'Reason not publicly disclosed' when appropriate and preserve negative or failed programs.
+For each modality family, identify the closest decision-relevant patent claims and verified legal status. Summarize apparent overlap across composition/sequence, binding site/epitope, mechanism or signaling bias, delivery/formulation, route, dose, and indication so the modality strategist can estimate technical design-around burden. Cite representative publications or grants. Do not provide a freedom-to-operate conclusion or infer non-infringement, validity, enforceability, present ownership, or legal clearance.
 You may spawn at most one narrow read-only status verifier. Do not edit report files, use Neon, or run paid classifiers.
 """
-

@@ -12,9 +12,25 @@ Use the most specific applicable category. Do not promote evidence across catego
 | Cell | No relevant cell data | Immortalized cell-line pharmacology | Primary human cells respond | iPSC/organoid disease-model rescue, preferably replicated |
 | Animal | No efficacy evidence or PK-only | Single rodent model/lab | Replicated or multi-model rodent efficacy | Multi-species, independent replication, or humanized disease-relevant model |
 
-For every phenotype row, report `category`, `score`, and a literal, source-supported evidence statement. Multiple independent rows may describe the same phenotype when evidence categories differ.
+The phenotype inventory is target-wide and indication-agnostic. The focal indication must not be an inclusion criterion. Search all material source-supported domains that could change target direction, safety, modality, biomarker strategy, or indication choice, including development, behavior, metabolism, organ physiology, reproduction, immunity, oncology, and adverse phenotypes as applicable. A report for one indication should therefore retain well-supported phenotypes from other diseases or physiological systems.
 
-Sort report rows in this fixed decision-strength order: `Genetic`, `Human PD`, `Animal`, `Cell`, `Mechanistic`. Include a `Human PD 0/3` row when no human target engagement or pharmacodynamic evidence is verified.
+For every phenotype row, report `category`, `score`, and a literal, source-supported evidence statement. Multiple independent rows may describe the same phenotype when evidence categories differ. Merge findings only when perturbation class, phenotype direction, category, and tissue context align; keep distinct syndromes, opposing directions, and safety liabilities separate. Within the row cap, represent every material phenotype domain rather than selecting only findings supportive of the focal indication. If breadth exceeds the cap, combine only biologically coherent outcomes and surface any materially omitted domain in limitations.
+
+Sort report rows in this fixed decision-strength order: `Genetic`, `Human PD`, `Animal`, `Cell`, `Mechanistic`. Include a `Human PD 0/3` row only when no human target engagement or pharmacodynamic evidence is verified across any indication.
+
+## Phenotype-to-pipeline reconciliation
+
+Before final row selection, compare the phenotype inventory with every candidate indication, human provocation or PD outcome, program termination driver, and major safety or modality liability. A material human phenotype must not disappear because its evidence is ligand-mediated, shared across receptor family members, pathway-level, disputed, or contradicted by a negative target-specific trial.
+
+When target attribution is unresolved:
+
+- name the phenotype explicitly and say which ligand, pathway, receptor family, or indirect perturbation produced it;
+- distinguish `pathway implicated` from `target causal` and do not convert the association into a therapeutic direction;
+- use `unclear` modulation and the weakest justified category/score when a phenotype row is still decision-relevant;
+- retain negative target-specific clinical evidence as an attribution boundary rather than treating it as proof that the phenotype is irrelevant;
+- if the row cap forces omission, name the phenotype and attribution dispute in `assessment.limitations`.
+
+The reconciliation is complete only when every clinical-program indication and every major human safety or provocation signal is represented in the phenotype table, explicitly excluded with a reason, or surfaced in limitations. This is a coverage check, not permission to inflate indirect pathway evidence into direct target evidence.
 
 ## Direction rules
 
@@ -49,11 +65,43 @@ Patent-only inventions compete for the candidate-table row cap by decision relev
 
 For terminated or withdrawn programs, give the sourced reason. Use `Reason not publicly disclosed` when no reliable reason is available.
 
-For modality strategy, put each real program example and outcome inside the pro or con statement it supports. Do not place examples in a separate column.
+## Prospective modality reasoning
+
+Keep the modality strategy distinct from the candidate landscape. The candidate table records what has been attempted; modality strategy asks what could rationally be attempted. Use two passes:
+
+1. **First-principles generation:** before reviewing target-specific programs, infer the intervention requirements from the desired modulation direction, target topology and compartment, pocket or interface geometry, endogenous ligand/substrate pharmacophore, catalytic versus scaffolding role, tissue and BBB access, turnover, homolog selectivity, required duration, and therapeutic-window constraints. Generate plausible modalities from those properties, including untried approaches.
+2. **Evidence-based reality check:** then search direct target programs, structurally or mechanistically analogous targets, modality-class precedent, patents, delivery data, and failures. Use these findings to revise rank and uncertainty, not to retroactively limit the generated option set.
+
+Represent each modality case with one or more sourced premises and at least one explicit inference. Use only these basis labels:
+
+- `Observed - target-specific`: direct structural, biophysical, pharmacologic, localization, expression, genetic, or program evidence for the target.
+- `Observed - analogous target/class`: evidence from a close structural/mechanistic analog or a relevant modality and delivery class. Name why the analog is relevant.
+- `First-principles inference`: a conclusion derived from cited premises, not an observed fact.
+
+Sources must support the premises; they need not literally state the inference. Do not treat absence of a target-specific program as evidence against physical plausibility, and do not treat physical plausibility as validation. For every modality, record the strongest evidence boundary, the most credible failure mode, and the least expensive experiment that can reject the concept. Rank by mechanistic fit, physical feasibility, delivery, controllability, safety/selectivity, biomarkerability, and development burden rather than by program count.
+
+### Patent differentiation screen
+
+For every ranked modality, inspect representative independent claims, examples, family members, jurisdictions, and verified legal status for the closest patent families. Identify which claim dimensions appear to overlap the proposal: composition or sequence, binding site or epitope, mechanism or signaling bias, target-specific use, delivery or formulation, route, dose, and indication. Then report:
+
+- `Low`: no active, materially overlapping claims were identified in the scoped search; this is still not legal clearance.
+- `Moderate`: one or more active families overlap important features, but a materially distinct chemotype/sequence, site, profile, delivery, or use appears technically plausible.
+- `High`: multiple or apparently broad active families overlap the core concept, so substantial technical differentiation or licensing may be needed.
+- `Unknown`: claim scope, family status, jurisdictional coverage, or proposal definition is too incomplete for a responsible estimate.
+
+State the searched overlap and the concrete differentiation levers. Cite the patent documents supporting the assessment. A patent search is not a freedom-to-operate opinion: do not infer non-infringement, validity, enforceability, present ownership, or legal clearance. Recommend a jurisdiction-specific claim chart by patent counsel before relying on a `Low`, `Moderate`, or `High` planning label.
 
 ## Translational precedent
 
 ## Assay definition and model availability
+
+Build an assay cascade in iteration order. The first in vitro row should be the simplest practical cell-based target-engagement or target-proximal assay, followed by a functional cell assay and then a more complex disease-relevant assay only when each adds a distinct decision. Direct engagement includes cellular occupancy/binding, target abundance or localization, or a proximal biochemical or functional event that demonstrates modulation at the target. A distal phenotype alone is not target engagement. If direct cellular engagement is not technically credible, state the gap and use the closest proximal pharmacodynamic readout without relabeling it.
+
+Prefer short-turnaround, quantitative, concentration-response-capable assays using wild-type or off-the-shelf cells when they answer the immediate question. Do not make engineered cells, primary differentiation, iPSC models, organoids, or multicellular systems the default first experiment solely because they are more disease-like.
+
+For every target, explicitly assess whether wild-type animals can yield a useful exposure-response, pharmacodynamic, physiological, behavioral, or tolerability signal. Prefer that route for early iteration when it is interpretable, even if it is not a disease model. If wild-type animals are unlikely to be informative, record the biological reason before escalating to knockout, transgenic, induced, surgical, or disease models. Include the useful wild-type assay in the report; retain a negative wild-type feasibility assessment in the research record and surface it as a limitation when it materially changes the development plan.
+
+Coarse, low-burden in vivo endpoints are valid when their resolution matches the decision. Home-cage activity or actigraphy-derived rest/activity may support an early sleep-like signal, for example, but must be labeled indirect and cannot establish sleep stages, sleep architecture, or definitive sleep without EEG/EMG or another validated sleep measurement.
 
 Write each assay as a falsifiable decision rule. Report:
 
@@ -62,6 +110,16 @@ Write each assay as a falsifiable decision rule. Report:
 - the expected positive readout, including direction and normalization/control where possible;
 - the expected negative readout and the control that distinguishes inactivity from assay failure;
 - the exact cell line, animal strain, allele, genotype, background, and injury/disease induction as applicable.
+
+Order rows by practical iteration value: target engagement or proximal pharmacology first, then simple functional response, then complex or disease-specific validation. Within the same role, prefer faster and less operationally burdensome models. Complexity is justified only by a distinct question that simpler assays cannot answer.
+
+For every in vivo row, report species-to-human conservation in three parts:
+
+- **Receptor/target:** orthology and isoforms; conservation of key ligand-, drug-, antibody-, or catalytic-contact residues; endogenous-ligand pharmacology; and direct cross-species activity of the proposed modality when available.
+- **Pathway/phenotype:** coupling and downstream signaling; relevant tissue and cell-type expression; circuit or organ physiology; and whether the model endpoint has the same causal interpretation in humans.
+- **Translation consequence:** what the conservation evidence permits the assay to decide and which species-specific reagent, humanized model, ex vivo human tissue, or human-cell bridge is required.
+
+Do not substitute global percent identity for functional conservation. A conserved receptor with a divergent binding epitope can invalidate an antibody study; conserved proximal signaling with different tissue expression or circuit architecture can invalidate a phenotype claim. Conversely, a coarse wild-type endpoint may remain useful for exposure-response or safety even when disease translation is limited, provided the decision boundary is explicit.
 
 Verify model availability in official repositories and cite the repository record. Assign `model_availability_score` independently of setup difficulty:
 
