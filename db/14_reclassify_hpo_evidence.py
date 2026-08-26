@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
-import re
 from pathlib import Path
 
 import psycopg2
@@ -21,8 +20,6 @@ from hpo_ontology import (
     ensure_reference_table,
 )
 
-
-HERE = Path(__file__).resolve().parent
 
 PHENOTYPE_COUNTS_SQL = """
 SELECT gp.target_id,
@@ -36,19 +33,6 @@ FROM public.gene_phenotypes gp
 LEFT JOIN preclin.hpo_phenotypic_abnormality_term branch USING (hpo_id)
 GROUP BY gp.target_id
 """
-
-
-def checked_in_view_sql(path: Path, view_name: str) -> str:
-    """Extract one checked-in CREATE VIEW body without reading deployed SQL."""
-    source = path.read_text()
-    pattern = re.compile(
-        rf"CREATE VIEW {re.escape(view_name)} AS\n(.*?);\n\nCOMMENT ON VIEW {re.escape(view_name)}",
-        re.DOTALL,
-    )
-    match = pattern.search(source)
-    if not match:
-        raise ValueError(f"could not find checked-in definition for {view_name} in {path}")
-    return f"CREATE OR REPLACE VIEW {view_name} AS\n{match.group(1)}"
 
 
 def parse_args() -> argparse.Namespace:
@@ -141,13 +125,6 @@ def main() -> None:
             """
         )
         value_updates = cur.rowcount
-
-        cur.execute(checked_in_view_sql(HERE / "05_ti_views.sql", "preclin.v_relative_success"))
-        cur.execute(
-            checked_in_view_sql(
-                HERE / "07_analysis_views.sql", "preclin.v_relative_success_clean"
-            )
-        )
 
         cur.execute(
             f"""

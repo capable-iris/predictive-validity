@@ -34,6 +34,35 @@ From the repository root:
 The core database setup takes ~15 minutes; source ingestion time depends on the
 selected trial scope.
 
+After the core bootstrap, apply every pending numbered migration with the
+checksum-aware runner:
+
+```bash
+.venv/bin/dotenv run -- .venv/bin/python db/migrate.py status
+.venv/bin/dotenv run -- .venv/bin/python db/migrate.py apply
+```
+
+The runner initializes `preclin.schema_migration` automatically, holds a
+database advisory lock, executes migrations in numeric order, and records the
+exact SHA-256 of each file. An applied file that is later edited is reported as
+`drift` and is never silently rerun. Python migrations use the active
+repository virtual environment.
+
+`baseline` exists only for adopting the ledger on an already-migrated
+database. It records—but does not execute—older files, requires an explicit
+reason and `--yes`, and labels every resulting row as `baseline`:
+
+```bash
+.venv/bin/dotenv run -- .venv/bin/python db/migrate.py baseline \
+  --through 25 \
+  --reason 'Verified pre-ledger production state when migration 26 was adopted' \
+  --yes
+```
+
+Do not use `baseline` on a fresh or uncertain database; use `apply` instead.
+Recurring source refreshes remain audited in `preclin.ingest_log` or dedicated
+release tables, while model evaluations remain in `preclin.benchmark_run`.
+
 ## Existing database migrations
 
 Run migrations from the repository root. Fresh ingests already contain these
@@ -148,6 +177,10 @@ PostgreSQL; no analysis-side JSON cache is required:
 These records are target–molecule history, not exact target–indication
 regulatory outcomes, and therefore remain separate from `preclin.approval`.
 
+Migration 26 adds the append-only `preclin.schema_migration` ledger used by
+`db/migrate.py`. Existing installations are explicitly baselined once;
+subsequent numbered migrations must be applied through the runner.
+
 ## Cohort-wide genetics tiers
 
 `analyses/classifiers/nelson_tier_classify.py --all-clinical` enumerates all
@@ -209,6 +242,7 @@ must be used for an established database instead of rerunning the bootstrap
 | `preclin.chembl_target_approval_release` | 1 | Versioned ChEMBL import provenance |
 | `preclin.chembl_target_mapping` | 513 | ChEMBL human single-protein mappings for clinical targets |
 | `preclin.chembl_target_approval_event` | 1,442 | Distinct direct approved molecule–target mechanisms |
+| `preclin.schema_migration` | varies | Append-only numbered-migration checksums and application provenance |
 | `preclin.evidence_score` | ~250,000 | LONG-form evidence facts |
 | `preclin.classification` | ~13,000 | LLM outputs (why_stopped, silent-kill, target resolution) |
 | `preclin.llm_run` | varies | Append-only exact prompt/response records behind classifications and evidence facts |

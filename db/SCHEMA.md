@@ -562,6 +562,22 @@ approval dates or evidence that a drug was approved for a particular local
 indication, so they must not replace `preclin.approval` or enter predictive
 features as outcome-derived evidence.
 
+### Migration ledger
+
+`preclin.schema_migration` is the append-only deployment ledger for numbered
+files from migration 14 onward. Each row records the number, filename, kind,
+exact SHA-256, execution mode, database role, timestamp, Git commit, and
+structured details. `db/migrate.py` serializes execution with a PostgreSQL
+advisory lock and treats any mismatch between a recorded row and its local file
+as checksum drift. `baseline` rows explicitly identify migrations that were
+already present when the ledger was introduced; they are not represented as
+having been executed by the runner.
+
+Source-release ingestion and model execution are intentionally separate:
+their mutable/repeated run provenance belongs in `preclin.ingest_log`,
+source-specific release tables, `preclin.llm_run`, or
+`preclin.benchmark_run`, rather than the schema-migration ledger.
+
 ### New: `preclin.evidence_score` (the fact table)
 **One row per (subject × dimension × source × extraction).**
 
