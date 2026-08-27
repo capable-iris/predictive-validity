@@ -4,6 +4,24 @@ The `preclin.*` schema in Neon Postgres is the single source of truth for the an
 
 For example SQL queries, see [`QUESTIONS.md`](QUESTIONS.md).
 
+## File taxonomy
+
+The numeric prefixes predate the migration ledger and describe execution order,
+not one uniform file type:
+
+| Files | Role | Change policy |
+|---|---|---|
+| `01`–`11` | Ordered bootstrap schema, canonical views, and initial loaders | May evolve so a fresh database reaches the current state. Any change needed by an existing database must also have a new immutable migration. |
+| `12`–`13` | Repeatable source/LLM ingestion applications | May evolve. Their runs are audited in source, ingest, and LLM provenance tables—not `schema_migration`. |
+| `14` and later | Immutable one-time SQL or Python migrations | Never edit after the file is recorded. Add the next migration number instead. `db/migrate.py` reports any checksum change as drift. |
+| Unnumbered utilities and `analyses/` | Repeatable refresh or analysis programs | May evolve; outputs must carry their own source release/run provenance. |
+
+The repository currently has no migration 15. Its absence is historical and is
+not treated as a pending migration. Migration 14 was baselined after its
+obsolete Relative Success view-recreation side effect was removed; its HPO
+reference and evidence postconditions were verified unchanged. It is immutable
+from that baseline onward.
+
 ## Connect
 
 ```bash
@@ -63,10 +81,11 @@ Do not use `baseline` on a fresh or uncertain database; use `apply` instead.
 Recurring source refreshes remain audited in `preclin.ingest_log` or dedicated
 release tables, while model evaluations remain in `preclin.benchmark_run`.
 
-## Existing database migrations
+## Immutable database migrations (14+)
 
-Run migrations from the repository root. Fresh ingests already contain these
-changes in the numbered setup files.
+Run migrations from the repository root through `db/migrate.py`. The individual
+commands below document each transition and its validation path; they are not a
+replacement for the ledger-managed runner on an established database.
 
 ```bash
 # Validate against the pinned official HPO release without committing.
@@ -78,8 +97,8 @@ changes in the numbered setup files.
 
 Migration 14 verifies the published SHA-256 for HPO release 2026-06-23,
 materializes the active descendants of `HP:0000118` as a positive allowlist,
-excludes explicit zero-frequency annotations, and recreates the two affected
-Relative Success views from their checked-in definitions. Pass
+and excludes explicit zero-frequency annotations. Relative Success views read
+the fact table dynamically and are not recreated by this migration. Pass
 `--ontology /path/to/hp.obo` to use an already downloaded copy; the digest is
 still verified.
 

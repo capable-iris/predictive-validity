@@ -94,7 +94,7 @@ predictive-validity/
 ├── CASE_STUDIES.md      6 preclinical-strong / clinical-fail drug case studies
 ├── CONTEXT_FDA.md       FDA approvals landscape + failure-reason breakdown
 ├── data/                CSV snapshots (approvals + leaderboard) + charts
-├── db/                  Postgres schema + ingest + SCHEMA.md (evidence taxonomy)
+├── db/                  Ordered bootstrap, immutable migrations, mutable ingesters, and schema docs
 ├── benchmark/           Scoring framework — 5 scorer files + runner
 ├── analyses/            Reproducible analysis scripts (ablation, time-machine, etc.)
 │   └── classifiers/     LLM classifiers that produce incrementally ingested audit JSONL

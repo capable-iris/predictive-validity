@@ -565,13 +565,23 @@ features as outcome-derived evidence.
 ### Migration ledger
 
 `preclin.schema_migration` is the append-only deployment ledger for numbered
-files from migration 14 onward. Each row records the number, filename, kind,
+files from migration 14 onward. Files 01–11 are maintained bootstrap
+schema/loaders, while 12–13 are repeatable ingestion applications; their
+numeric prefixes represent historical execution order rather than immutable
+migration identity. Each migration-ledger row records the number, filename, kind,
 exact SHA-256, execution mode, database role, timestamp, Git commit, and
 structured details. `db/migrate.py` serializes execution with a PostgreSQL
 advisory lock and treats any mismatch between a recorded row and its local file
 as checksum drift. `baseline` rows explicitly identify migrations that were
 already present when the ledger was introduced; they are not represented as
 having been executed by the runner.
+
+Bootstrap files may be updated so a new database starts in the current state,
+but the corresponding transition for an established database must be added as
+a new immutable migration. Applied migrations are never rewritten; corrections
+use the next available number. Migration 14 is a documented pre-ledger
+exception: its obsolete view-recreation side effect was removed before its
+verified postconditions were baselined.
 
 Source-release ingestion and model execution are intentionally separate:
 their mutable/repeated run provenance belongs in `preclin.ingest_log`,
